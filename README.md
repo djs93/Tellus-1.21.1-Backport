@@ -4,6 +4,8 @@ Tellus is a Fabric mod that recreates real-world terrain in Minecraft by generat
 
 ![Tellus header image](images/Header%20image.png)
 
+Inspired by Gegy's Terrarium: https://modrinth.com/mod/terrarium
+
 Survival note: Some survival features are still missing (including certain structures and biomes). While a survival world is possible, upcoming updates may break those worlds; for now Tellus is better suited for testing and exploration than long-term survival.
 
 Internet & data note: Tellus requires an active internet connection and will not work offline. It downloads terrain, land cover, climate, and weather data on demand; expect ongoing data usage that varies with how much of the world you explore.
