@@ -6,6 +6,8 @@ Survival note: Some survival features are still missing (including certain struc
 
 Internet & data note: Tellus requires an active internet connection and will not work offline. It downloads terrain, land cover, climate, and weather data on demand; expect ongoing data usage that varies with how much of the world you explore.
 
+Server support note: Tellus must be installed on the server, but is not required on clients. Official server support is not available yet; for now you should create the world in singleplayer first, then move that world to the server (with Tellus installed) so new chunks generate with Tellus.
+
 *Note: generative AI was used during the creation of this mod.*
 
 ## Features
