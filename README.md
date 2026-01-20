@@ -2,6 +2,8 @@
 
 Tellus is a Fabric mod that recreates real-world terrain in Minecraft by generating Earth-scale landscapes from geographic data. It focuses on realistic elevation, biome placement, and climate-driven time and weather, aiming to make the world feel like a playable map of our planet.
 
+![Tellus header image](images/Header%20image.png)
+
 Survival note: Some survival features are still missing (including certain structures and biomes). While a survival world is possible, upcoming updates may break those worlds; for now Tellus is better suited for testing and exploration than long-term survival.
 
 Internet & data note: Tellus requires an active internet connection and will not work offline. It downloads terrain, land cover, climate, and weather data on demand; expect ongoing data usage that varies with how much of the world you explore.
@@ -42,6 +44,8 @@ More commands will be added over time.
   <summary>Settings</summary>
 
 These options are available in the "Customize World Generation" screen when creating a Tellus world.
+
+![Tellus config screen](images/Config%20screen.png)
 
 ### World Settings
 - **World Scale**: Controls how many real-world meters are represented by one block. Lower values create more detailed, larger worlds; higher values compress distances and features. Current limits are 1:1m to 1:500m per block, with larger scales planned up to 1:40km.
