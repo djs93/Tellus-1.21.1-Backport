@@ -7,8 +7,7 @@ import java.util.Arrays;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.Identifier;
-import org.jspecify.annotations.NonNull;
+import net.minecraft.resources.ResourceLocation;
 
 public record TellusWeatherPayload(
 		boolean weatherEnabled,
@@ -19,8 +18,8 @@ public record TellusWeatherPayload(
 		int spacingBlocks,
 		float[] snowIndex
 ) implements CustomPacketPayload {
-	public static final @NonNull Type<TellusWeatherPayload> TYPE = new Type<>(
-			Identifier.fromNamespaceAndPath(Tellus.MOD_ID, "realtime_weather")
+	public static final Type<TellusWeatherPayload> TYPE = new Type<>(
+			ResourceLocation.fromNamespaceAndPath(Tellus.MOD_ID, "realtime_weather")
 	);
 
 	private static final int GRID_POINTS = SnowGrid.GRID_POINTS;
@@ -69,7 +68,7 @@ public record TellusWeatherPayload(
 	};
 
 	@Override
-	public @NonNull Type<? extends CustomPacketPayload> type() {
+	public Type<? extends CustomPacketPayload> type() {
 		return TYPE;
 	}
 

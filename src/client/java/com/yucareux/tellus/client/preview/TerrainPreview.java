@@ -1,9 +1,12 @@
 package com.yucareux.tellus.client.preview;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.yucareux.tellus.Tellus;
-import com.yucareux.tellus.mixin.client.GuiGraphicsAccessor;
 import com.yucareux.tellus.world.data.cover.TellusLandCoverSource;
 import com.yucareux.tellus.world.data.elevation.TellusElevationSource;
 import com.yucareux.tellus.world.data.koppen.TellusKoppenSource;
@@ -17,17 +20,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.navigation.ScreenRectangle;
-import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.gui.render.state.GuiElementRenderState;
-import net.minecraft.client.gui.render.state.GuiRenderState;
-import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.util.Mth;
-import org.joml.Matrix3x2f;
-import org.joml.Matrix3x2fc;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.jspecify.annotations.NonNull;
 
 public final class TerrainPreview implements AutoCloseable {
 	private static final double EQUATOR_CIRCUMFERENCE = 40075017.0;
@@ -148,7 +144,7 @@ public final class TerrainPreview implements AutoCloseable {
 		return this.pending != null;
 	}
 
-	public @NonNull PreviewStatus getStatus() {
+	public PreviewStatus getStatus() {
 		return Objects.requireNonNull(this.status.get(), "status");
 	}
 
@@ -160,11 +156,222 @@ public final class TerrainPreview implements AutoCloseable {
 
 		Matrix4f modelView = buildModelView(rotationX, rotationY);
 		Matrix4f projection = buildProjection(width, height, zoom);
-		Matrix3x2f pose = new Matrix3x2f(graphics.pose());
-		ScreenRectangle rawBounds = new ScreenRectangle(x, y, width, height);
-		ScreenRectangle bounds = rawBounds.transformAxisAligned(pose);
-		GuiRenderState renderState = ((GuiGraphicsAccessor) graphics).tellus$getGuiRenderState();
-		renderState.submitGuiElement(new TerrainPreviewRenderState(preview, modelView, projection, pose, rawBounds, bounds));
+		Matrix4f guiPose = graphics.pose().last().pose();
+
+		graphics.enableScissor(x, y, x + width, y + height);
+		RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
+		Tesselator tesselator = Tesselator.getInstance();
+		BufferBuilder builder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+
+		drawPreviewMesh(builder, preview, modelView, projection, guiPose, x, y, width, height);
+
+		BufferUploader.drawWithShader(builder.buildOrThrow());
+		graphics.disableScissor();
+	}
+
+	private static void drawPreviewMesh(
+			BufferBuilder builder,
+			PreviewMesh mesh,
+			Matrix4f modelView,
+			Matrix4f projection,
+			Matrix4f guiPose,
+			int x, int y, int width, int height
+	) {
+		int stride = mesh.granularity;
+		if (mesh.size <= stride) {
+			return;
+		}
+
+		int quadsX = (mesh.size - 1) / stride;
+		int quadsZ = (mesh.size - 1) / stride;
+		int quadCount = quadsX * quadsZ;
+		int[] quadTopLeft = new int[quadCount];
+		float[] quadDepth = new float[quadCount];
+		boolean[] quadVisible = new boolean[quadCount];
+
+		Vector3f view = new Vector3f();
+		Vector3f normal = new Vector3f();
+		float depthScale = 0.25f;
+		int quadIndex = 0;
+
+		for (int z = 0; z < mesh.size - stride; z += stride) {
+			float z0 = mesh.axis[z];
+			float z1 = mesh.axis[z + stride];
+			int rowIndex = z * mesh.size;
+			int nextRowIndex = (z + stride) * mesh.size;
+			for (int xq = 0; xq < mesh.size - stride; xq += stride) {
+				int idx = rowIndex + xq;
+				int idxRight = idx + stride;
+				int idxDown = nextRowIndex + xq;
+				int idxDownRight = idxDown + stride;
+
+				float v0 = modelView.transformPosition(mesh.axis[xq], mesh.heights[idx], z0, view).z;
+				float v1 = modelView.transformPosition(mesh.axis[xq + stride], mesh.heights[idxRight], z0, view).z;
+				float v2 = modelView.transformPosition(mesh.axis[xq], mesh.heights[idxDown], z1, view).z;
+				float v3 = modelView.transformPosition(mesh.axis[xq + stride], mesh.heights[idxDownRight], z1, view).z;
+				float maxZ = Math.max(Math.max(v0, v1), Math.max(v2, v3));
+
+				if (maxZ > -Z_NEAR) {
+					quadTopLeft[quadIndex] = -1;
+					quadDepth[quadIndex] = Float.POSITIVE_INFINITY;
+					quadVisible[quadIndex] = false;
+				} else {
+					float depth = (v0 + v1 + v2 + v3) * depthScale;
+					quadTopLeft[quadIndex] = idx;
+					quadDepth[quadIndex] = depth;
+					quadVisible[quadIndex] = true;
+				}
+				quadIndex++;
+			}
+		}
+
+		if (quadCount > 1) {
+			sortQuads(quadTopLeft, quadDepth, 0, quadCount - 1);
+		}
+
+		Vector3f projected = new Vector3f();
+		float x0 = x;
+		float y0 = y;
+
+		for (int i = 0; i < quadCount; i++) {
+			int idx = quadTopLeft[i];
+			if (idx < 0 || !quadVisible[i]) {
+				continue;
+			}
+			int xq = idx % mesh.size;
+			int zq = idx / mesh.size;
+			int idxRight = idx + stride;
+			int idxDown = idx + stride * mesh.size;
+			int idxDownRight = idxDown + stride;
+
+			float worldX0 = mesh.axis[xq];
+			float worldX1 = mesh.axis[xq + stride];
+			float worldZ0 = mesh.axis[zq];
+			float worldZ1 = mesh.axis[zq + stride];
+
+			float shade = computeQuadShade(
+					worldX0, mesh.heights[idx], worldZ0,
+					worldX1, mesh.heights[idxRight], worldZ0,
+					worldX0, mesh.heights[idxDown], worldZ1,
+					normal
+			);
+			int quadColor = applyShade(mesh.colors[idx], shade);
+			int argb = 0xFF000000 | (quadColor & 0x00FFFFFF);
+			int r = (argb >> 16) & 0xFF;
+			int g = (argb >> 8) & 0xFF;
+			int b = argb & 0xFF;
+			int a = (argb >> 24) & 0xFF;
+			emitVertex(builder, guiPose, modelView, projection, worldX0, mesh.heights[idxDown], worldZ1, r, g, b, a, x0, y0, width, height, view, projected);
+			emitVertex(builder, guiPose, modelView, projection, worldX1, mesh.heights[idxDownRight], worldZ1, r, g, b, a, x0, y0, width, height, view, projected);
+			emitVertex(builder, guiPose, modelView, projection, worldX1, mesh.heights[idxRight], worldZ0, r, g, b, a, x0, y0, width, height, view, projected);
+			emitVertex(builder, guiPose, modelView, projection, worldX0, mesh.heights[idx], worldZ0, r, g, b, a, x0, y0, width, height, view, projected);
+		}
+	}
+
+	private static void emitVertex(
+			BufferBuilder builder,
+			Matrix4f guiPose,
+			Matrix4f modelView,
+			Matrix4f projection,
+			float worldX,
+			float worldY,
+			float worldZ,
+			int r, int g, int b, int a,
+			float x0,
+			float y0,
+			float width,
+			float height,
+			Vector3f view,
+			Vector3f projected
+	) {
+		modelView.transformPosition(worldX, worldY, worldZ, view);
+		projection.transformProject(view, projected);
+
+		float screenX = x0 + (projected.x + 1.0f) * 0.5f * width;
+		float screenY = y0 + (1.0f - projected.y) * 0.5f * height;
+		builder.addVertex(guiPose, screenX, screenY, 0.0f).setColor(r, g, b, a);
+	}
+
+	private static float computeQuadShade(
+			float x0,
+			float y0,
+			float z0,
+			float x1,
+			float y1,
+			float z1,
+			float x2,
+			float y2,
+			float z2,
+			Vector3f normal
+	) {
+		float ax = x1 - x0;
+		float ay = y1 - y0;
+		float az = z1 - z0;
+		float bx = x2 - x0;
+		float by = y2 - y0;
+		float bz = z2 - z0;
+
+		normal.set(
+				ay * bz - az * by,
+				az * bx - ax * bz,
+				ax * by - ay * bx
+		);
+		if (normal.y < 0.0f) {
+			normal.negate();
+		}
+		normal.normalize();
+
+		float shade = Mth.clamp(normal.dot(LIGHT_DIR), 0.0f, 1.0f);
+		shade = AMBIENT_SHADE + shade * (1.0f - AMBIENT_SHADE);
+		return Math.round(shade * SHADE_STEPS) / SHADE_STEPS;
+	}
+
+	private static int applyShade(int rgb, float shade) {
+		int r = (rgb >> 16) & 0xFF;
+		int g = (rgb >> 8) & 0xFF;
+		int b = rgb & 0xFF;
+		r = Mth.clamp(Math.round(r * shade), 0, 255);
+		g = Mth.clamp(Math.round(g * shade), 0, 255);
+		b = Mth.clamp(Math.round(b * shade), 0, 255);
+		return (r << 16) | (g << 8) | b;
+	}
+
+	private static void sortQuads(int[] quadTopLeft, float[] quadDepth, int left, int right) {
+		int i = left;
+		int j = right;
+		float pivot = quadDepth[(left + right) >>> 1];
+
+		while (i <= j) {
+			while (quadDepth[i] < pivot) {
+				i++;
+			}
+			while (quadDepth[j] > pivot) {
+				j--;
+			}
+			if (i <= j) {
+				swap(quadTopLeft, quadDepth, i, j);
+				i++;
+				j--;
+			}
+		}
+
+		if (left < j) {
+			sortQuads(quadTopLeft, quadDepth, left, j);
+		}
+		if (i < right) {
+			sortQuads(quadTopLeft, quadDepth, i, right);
+		}
+	}
+
+	private static void swap(int[] quadTopLeft, float[] quadDepth, int i, int j) {
+		int tempIndex = quadTopLeft[i];
+		quadTopLeft[i] = quadTopLeft[j];
+		quadTopLeft[j] = tempIndex;
+
+		float tempDepth = quadDepth[i];
+		quadDepth[i] = quadDepth[j];
+		quadDepth[j] = tempDepth;
 	}
 
 	private static Matrix4f buildProjection(int width, int height, float zoom) {
@@ -541,7 +748,7 @@ public final class TerrainPreview implements AutoCloseable {
 		this.executor.shutdownNow();
 	}
 
-	private void updateStatus(int id, @NonNull PreviewStage stage, float progress) {
+	private void updateStatus(int id, PreviewStage stage, float progress) {
 		if (id != this.requestId.get()) {
 			return;
 		}
@@ -554,7 +761,7 @@ public final class TerrainPreview implements AutoCloseable {
 		COMPLETE
 	}
 
-	public record PreviewStatus(@NonNull PreviewStage stage, float progress) {
+	public record PreviewStatus(PreviewStage stage, float progress) {
 		public PreviewStatus {
 			Objects.requireNonNull(stage, "stage");
 		}
@@ -573,247 +780,6 @@ public final class TerrainPreview implements AutoCloseable {
 			this.heights = heights;
 			this.colors = colors;
 			this.axis = axis;
-		}
-	}
-
-	private static final class TerrainPreviewRenderState implements GuiElementRenderState {
-		private final PreviewMesh mesh;
-		private final Matrix4f modelView;
-		private final Matrix4f projection;
-		private final @NonNull Matrix3x2fc pose;
-		private final ScreenRectangle rawBounds;
-		private final ScreenRectangle bounds;
-		private final ScreenRectangle scissor;
-
-		private TerrainPreviewRenderState(
-				PreviewMesh mesh,
-				Matrix4f modelView,
-				Matrix4f projection,
-				@NonNull Matrix3x2fc pose,
-				ScreenRectangle rawBounds,
-				ScreenRectangle bounds
-		) {
-			this.mesh = mesh;
-			this.modelView = modelView;
-			this.projection = projection;
-			this.pose = pose;
-			this.rawBounds = rawBounds;
-			this.bounds = bounds;
-			this.scissor = bounds;
-		}
-
-		@Override
-		public @NonNull RenderPipeline pipeline() {
-			return RenderPipelines.GUI;
-		}
-
-		@Override
-		public @NonNull TextureSetup textureSetup() {
-			return TextureSetup.noTexture();
-		}
-
-		@Override
-		public ScreenRectangle scissorArea() {
-			return this.scissor;
-		}
-
-		@Override
-		public ScreenRectangle bounds() {
-			return this.bounds;
-		}
-
-		@Override
-		public void buildVertices(@NonNull VertexConsumer consumer) {
-			int stride = this.mesh.granularity;
-			if (this.mesh.size <= stride) {
-				return;
-			}
-
-			int quadsX = (this.mesh.size - 1) / stride;
-			int quadsZ = (this.mesh.size - 1) / stride;
-			int quadCount = quadsX * quadsZ;
-			int[] quadTopLeft = new int[quadCount];
-			float[] quadDepth = new float[quadCount];
-			boolean[] quadVisible = new boolean[quadCount];
-
-			Vector3f view = new Vector3f();
-			Vector3f normal = new Vector3f();
-			float depthScale = 0.25f;
-			int quadIndex = 0;
-
-			for (int z = 0; z < this.mesh.size - stride; z += stride) {
-				float z0 = this.mesh.axis[z];
-				float z1 = this.mesh.axis[z + stride];
-				int rowIndex = z * this.mesh.size;
-				int nextRowIndex = (z + stride) * this.mesh.size;
-				for (int x = 0; x < this.mesh.size - stride; x += stride) {
-					int idx = rowIndex + x;
-					int idxRight = idx + stride;
-					int idxDown = nextRowIndex + x;
-					int idxDownRight = idxDown + stride;
-
-					float v0 = this.modelView.transformPosition(this.mesh.axis[x], this.mesh.heights[idx], z0, view).z;
-					float v1 = this.modelView.transformPosition(this.mesh.axis[x + stride], this.mesh.heights[idxRight], z0, view).z;
-					float v2 = this.modelView.transformPosition(this.mesh.axis[x], this.mesh.heights[idxDown], z1, view).z;
-					float v3 = this.modelView.transformPosition(this.mesh.axis[x + stride], this.mesh.heights[idxDownRight], z1, view).z;
-					float maxZ = Math.max(Math.max(v0, v1), Math.max(v2, v3));
-
-					if (maxZ > -Z_NEAR) {
-						quadTopLeft[quadIndex] = -1;
-						quadDepth[quadIndex] = Float.POSITIVE_INFINITY;
-						quadVisible[quadIndex] = false;
-					} else {
-						float depth = (v0 + v1 + v2 + v3) * depthScale;
-						quadTopLeft[quadIndex] = idx;
-						quadDepth[quadIndex] = depth;
-						quadVisible[quadIndex] = true;
-					}
-					quadIndex++;
-				}
-			}
-
-			if (quadCount > 1) {
-				sortQuads(quadTopLeft, quadDepth, 0, quadCount - 1);
-			}
-
-			Vector3f projected = new Vector3f();
-			float x0 = this.rawBounds.left();
-			float y0 = this.rawBounds.top();
-			float width = this.rawBounds.width();
-			float height = this.rawBounds.height();
-
-			for (int i = 0; i < quadCount; i++) {
-				int idx = quadTopLeft[i];
-				if (idx < 0 || !quadVisible[i]) {
-					continue;
-				}
-				int x = idx % this.mesh.size;
-				int z = idx / this.mesh.size;
-				int idxRight = idx + stride;
-				int idxDown = idx + stride * this.mesh.size;
-				int idxDownRight = idxDown + stride;
-
-				float worldX0 = this.mesh.axis[x];
-				float worldX1 = this.mesh.axis[x + stride];
-				float worldZ0 = this.mesh.axis[z];
-				float worldZ1 = this.mesh.axis[z + stride];
-
-				float shade = computeQuadShade(
-						worldX0, this.mesh.heights[idx], worldZ0,
-						worldX1, this.mesh.heights[idxRight], worldZ0,
-						worldX0, this.mesh.heights[idxDown], worldZ1,
-						normal
-				);
-				int quadColor = applyShade(this.mesh.colors[idx], shade);
-				emitVertex(consumer, worldX0, this.mesh.heights[idxDown], worldZ1, quadColor, x0, y0, width, height, view, projected);
-				emitVertex(consumer, worldX1, this.mesh.heights[idxDownRight], worldZ1, quadColor, x0, y0, width, height, view, projected);
-				emitVertex(consumer, worldX1, this.mesh.heights[idxRight], worldZ0, quadColor, x0, y0, width, height, view, projected);
-				emitVertex(consumer, worldX0, this.mesh.heights[idx], worldZ0, quadColor, x0, y0, width, height, view, projected);
-			}
-		}
-
-		private void emitVertex(
-				VertexConsumer consumer,
-				float worldX,
-				float worldY,
-				float worldZ,
-				int rgb,
-				float x0,
-				float y0,
-				float width,
-				float height,
-				Vector3f view,
-				Vector3f projected
-		) {
-			this.modelView.transformPosition(worldX, worldY, worldZ, view);
-			this.projection.transformProject(view, projected);
-
-			float screenX = x0 + (projected.x + 1.0f) * 0.5f * width;
-			float screenY = y0 + (1.0f - projected.y) * 0.5f * height;
-			int argb = 0xFF000000 | (rgb & 0x00FFFFFF);
-			consumer.addVertexWith2DPose(this.pose, screenX, screenY).setColor(argb);
-		}
-
-		private float computeQuadShade(
-				float x0,
-				float y0,
-				float z0,
-				float x1,
-				float y1,
-				float z1,
-				float x2,
-				float y2,
-				float z2,
-				Vector3f normal
-		) {
-			float ax = x1 - x0;
-			float ay = y1 - y0;
-			float az = z1 - z0;
-			float bx = x2 - x0;
-			float by = y2 - y0;
-			float bz = z2 - z0;
-
-			normal.set(
-					ay * bz - az * by,
-					az * bx - ax * bz,
-					ax * by - ay * bx
-			);
-			if (normal.y < 0.0f) {
-				normal.negate();
-			}
-			normal.normalize();
-
-			float shade = Mth.clamp(normal.dot(LIGHT_DIR), 0.0f, 1.0f);
-			shade = AMBIENT_SHADE + shade * (1.0f - AMBIENT_SHADE);
-			return Math.round(shade * SHADE_STEPS) / SHADE_STEPS;
-		}
-
-		private static int applyShade(int rgb, float shade) {
-			int r = (rgb >> 16) & 0xFF;
-			int g = (rgb >> 8) & 0xFF;
-			int b = rgb & 0xFF;
-			r = Mth.clamp(Math.round(r * shade), 0, 255);
-			g = Mth.clamp(Math.round(g * shade), 0, 255);
-			b = Mth.clamp(Math.round(b * shade), 0, 255);
-			return (r << 16) | (g << 8) | b;
-		}
-
-
-		private static void sortQuads(int[] quadTopLeft, float[] quadDepth, int left, int right) {
-			int i = left;
-			int j = right;
-			float pivot = quadDepth[(left + right) >>> 1];
-
-			while (i <= j) {
-				while (quadDepth[i] < pivot) {
-					i++;
-				}
-				while (quadDepth[j] > pivot) {
-					j--;
-				}
-				if (i <= j) {
-					swap(quadTopLeft, quadDepth, i, j);
-					i++;
-					j--;
-				}
-			}
-
-			if (left < j) {
-				sortQuads(quadTopLeft, quadDepth, left, j);
-			}
-			if (i < right) {
-				sortQuads(quadTopLeft, quadDepth, i, right);
-			}
-		}
-
-		private static void swap(int[] quadTopLeft, float[] quadDepth, int i, int j) {
-			int tempIndex = quadTopLeft[i];
-			quadTopLeft[i] = quadTopLeft[j];
-			quadTopLeft[j] = tempIndex;
-
-			float tempDepth = quadDepth[i];
-			quadDepth[i] = quadDepth[j];
-			quadDepth[j] = tempDepth;
 		}
 	}
 

@@ -35,7 +35,6 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 
 public final class TellusLodGenerator implements IDhApiWorldGenerator {
@@ -109,7 +108,7 @@ public final class TellusLodGenerator implements IDhApiWorldGenerator {
 	private final IDhApiLevelWrapper levelWrapper;
 	private final EarthChunkGenerator generator;
 	private final EarthBiomeSource biomeSource;
-	private final ThreadLocal<@NonNull WrapperCache> wrapperCache;
+	private final ThreadLocal<WrapperCache> wrapperCache;
 
 	public TellusLodGenerator(final IDhApiLevelWrapper levelWrapper, final EarthChunkGenerator generator) {
 		this.levelWrapper = levelWrapper;
@@ -1499,9 +1498,9 @@ public final class TellusLodGenerator implements IDhApiWorldGenerator {
 
 		private IDhApiBiomeWrapper lookupBiomeById(final ResourceKey<Biome> biome) {
 			try {
-				return DhApi.Delayed.wrapperFactory.getBiomeWrapper(biome.identifier().toString(), levelWrapper);
+				return DhApi.Delayed.wrapperFactory.getBiomeWrapper(biome.location().toString(), levelWrapper);
 			} catch (final IOException ignored) {
-				LOGGER.warn("Could not find biome with id {}, will not use for LODs", biome.identifier());
+				LOGGER.warn("Could not find biome with id {}, will not use for LODs", biome.location());
 				return null;
 			}
 		}

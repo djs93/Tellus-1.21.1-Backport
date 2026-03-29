@@ -35,11 +35,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.EmptyBlockGetter;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.StructureManager;
@@ -52,6 +51,7 @@ import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
+import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -80,7 +80,6 @@ import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.material.Fluids;
-import org.jspecify.annotations.NonNull;
 
 public final class EarthChunkGenerator extends ChunkGenerator {
 	public static final MapCodec<EarthChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
@@ -197,7 +196,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	private static final float AXOLOTL_CHUNK_CHANCE = 0.55f;
 	private static final float AXOLOTL_POND_CHANCE = 0.68f;
 	private static final int MAX_AXOLOTLS_PER_CHUNK = 2;
-	private static final @NonNull BlockState[] BADLANDS_BANDS = {
+	private static final BlockState[] BADLANDS_BANDS = {
 			Blocks.TERRACOTTA.defaultBlockState(),
 			Blocks.ORANGE_TERRACOTTA.defaultBlockState(),
 			Blocks.YELLOW_TERRACOTTA.defaultBlockState(),
@@ -213,34 +212,34 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	private static final int LOD_MIN_WATER_DEPTH = 25;
 	private static final int SURFACE_ALPINE_HEIGHT_ABOVE_SEA = 200;
 	private static final int SURFACE_HIGHLAND_HEIGHT_ABOVE_SEA = 120;
-	private static final @NonNull BlockState AIR_STATE = Blocks.AIR.defaultBlockState();
-	private static final @NonNull BlockState STONE_STATE = Blocks.STONE.defaultBlockState();
-	private static final @NonNull BlockState DEEPSLATE_STATE = Blocks.DEEPSLATE.defaultBlockState();
-	private static final @NonNull BlockState WATER_STATE = Blocks.WATER.defaultBlockState();
-	private static final @NonNull BlockState BEDROCK_STATE = Blocks.BEDROCK.defaultBlockState();
-	private static final @NonNull BlockState CAVE_AIR_STATE = Blocks.CAVE_AIR.defaultBlockState();
-	private static final @NonNull BlockState DIRT_STATE = Blocks.DIRT.defaultBlockState();
-	private static final @NonNull BlockState SAND_STATE = Blocks.SAND.defaultBlockState();
-	private static final @NonNull BlockState RED_SAND_STATE = Blocks.RED_SAND.defaultBlockState();
-	private static final @NonNull BlockState SANDSTONE_STATE = Blocks.SANDSTONE.defaultBlockState();
-	private static final @NonNull BlockState TERRACOTTA_STATE = Blocks.TERRACOTTA.defaultBlockState();
-	private static final @NonNull BlockState GRASS_BLOCK_STATE = Blocks.GRASS_BLOCK.defaultBlockState();
-	private static final @NonNull BlockState PODZOL_STATE = Blocks.PODZOL.defaultBlockState();
-	private static final @NonNull BlockState COARSE_DIRT_STATE = Blocks.COARSE_DIRT.defaultBlockState();
-	private static final @NonNull BlockState ROOTED_DIRT_STATE = Blocks.ROOTED_DIRT.defaultBlockState();
-	private static final @NonNull BlockState MUD_STATE = Blocks.MUD.defaultBlockState();
-	private static final @NonNull BlockState PACKED_MUD_STATE = Blocks.PACKED_MUD.defaultBlockState();
-	private static final @NonNull BlockState MOSS_BLOCK_STATE = Blocks.MOSS_BLOCK.defaultBlockState();
-	private static final @NonNull BlockState COBBLESTONE_STATE = Blocks.COBBLESTONE.defaultBlockState();
-	private static final @NonNull BlockState ANDESITE_STATE = Blocks.ANDESITE.defaultBlockState();
-	private static final @NonNull BlockState DIORITE_STATE = Blocks.DIORITE.defaultBlockState();
-	private static final @NonNull BlockState TUFF_STATE = Blocks.TUFF.defaultBlockState();
-	private static final @NonNull BlockState GRAVEL_STATE = Blocks.GRAVEL.defaultBlockState();
-	private static final @NonNull BlockState CLAY_STATE = Blocks.CLAY.defaultBlockState();
-	private static final @NonNull BlockState ICE_STATE = Blocks.ICE.defaultBlockState();
-	private static final @NonNull BlockState POWDER_SNOW_STATE = Blocks.POWDER_SNOW.defaultBlockState();
-	private static final @NonNull BlockState SNOW_BLOCK_STATE = Blocks.SNOW_BLOCK.defaultBlockState();
-	private static final @NonNull BlockState SNOW_LAYER_STATE = Objects.requireNonNull(
+	private static final BlockState AIR_STATE = Blocks.AIR.defaultBlockState();
+	private static final BlockState STONE_STATE = Blocks.STONE.defaultBlockState();
+	private static final BlockState DEEPSLATE_STATE = Blocks.DEEPSLATE.defaultBlockState();
+	private static final BlockState WATER_STATE = Blocks.WATER.defaultBlockState();
+	private static final BlockState BEDROCK_STATE = Blocks.BEDROCK.defaultBlockState();
+	private static final BlockState CAVE_AIR_STATE = Blocks.CAVE_AIR.defaultBlockState();
+	private static final BlockState DIRT_STATE = Blocks.DIRT.defaultBlockState();
+	private static final BlockState SAND_STATE = Blocks.SAND.defaultBlockState();
+	private static final BlockState RED_SAND_STATE = Blocks.RED_SAND.defaultBlockState();
+	private static final BlockState SANDSTONE_STATE = Blocks.SANDSTONE.defaultBlockState();
+	private static final BlockState TERRACOTTA_STATE = Blocks.TERRACOTTA.defaultBlockState();
+	private static final BlockState GRASS_BLOCK_STATE = Blocks.GRASS_BLOCK.defaultBlockState();
+	private static final BlockState PODZOL_STATE = Blocks.PODZOL.defaultBlockState();
+	private static final BlockState COARSE_DIRT_STATE = Blocks.COARSE_DIRT.defaultBlockState();
+	private static final BlockState ROOTED_DIRT_STATE = Blocks.ROOTED_DIRT.defaultBlockState();
+	private static final BlockState MUD_STATE = Blocks.MUD.defaultBlockState();
+	private static final BlockState PACKED_MUD_STATE = Blocks.PACKED_MUD.defaultBlockState();
+	private static final BlockState MOSS_BLOCK_STATE = Blocks.MOSS_BLOCK.defaultBlockState();
+	private static final BlockState COBBLESTONE_STATE = Blocks.COBBLESTONE.defaultBlockState();
+	private static final BlockState ANDESITE_STATE = Blocks.ANDESITE.defaultBlockState();
+	private static final BlockState DIORITE_STATE = Blocks.DIORITE.defaultBlockState();
+	private static final BlockState TUFF_STATE = Blocks.TUFF.defaultBlockState();
+	private static final BlockState GRAVEL_STATE = Blocks.GRAVEL.defaultBlockState();
+	private static final BlockState CLAY_STATE = Blocks.CLAY.defaultBlockState();
+	private static final BlockState ICE_STATE = Blocks.ICE.defaultBlockState();
+	private static final BlockState POWDER_SNOW_STATE = Blocks.POWDER_SNOW.defaultBlockState();
+	private static final BlockState SNOW_BLOCK_STATE = Blocks.SNOW_BLOCK.defaultBlockState();
+	private static final BlockState SNOW_LAYER_STATE = Objects.requireNonNull(
 			Blocks.SNOW.defaultBlockState(),
 			"snowLayerState"
 	);
@@ -294,9 +293,9 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	@Override
-	public @NonNull ChunkGeneratorStructureState createState(
-			@NonNull HolderLookup<StructureSet> structureSets,
-			@NonNull RandomState randomState,
+	public ChunkGeneratorStructureState createState(
+			HolderLookup<StructureSet> structureSets,
+			RandomState randomState,
 			long seed
 	) {
 		this.worldSeed = seed;
@@ -317,8 +316,8 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		if (column.hasWater()) {
 			surface = Math.max(surface, column.waterSurface());
 		}
-		int maxY = heightAccessor.getMaxY() - 1;
-		int spawnY = Mth.clamp(surface + 1, heightAccessor.getMinY(), maxY);
+		int maxY = heightAccessor.getMaxBuildHeight() - 1;
+		int spawnY = Mth.clamp(surface + 1, heightAccessor.getMinBuildHeight(), maxY);
 		return new BlockPos(spawnX, spawnY, spawnZ);
 	}
 
@@ -338,18 +337,19 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	@Override
-	protected @NonNull MapCodec<? extends ChunkGenerator> codec() {
+	protected MapCodec<? extends ChunkGenerator> codec() {
 		return Objects.requireNonNull(CODEC, "CODEC");
 	}
 
 	@Override
 	public void applyCarvers(
-			@NonNull WorldGenRegion level,
+			WorldGenRegion level,
 			long seed,
-			@NonNull RandomState random,
-			@NonNull BiomeManager biomeManager,
-			@NonNull StructureManager structures,
-			@NonNull ChunkAccess chunk
+			RandomState random,
+			BiomeManager biomeManager,
+			StructureManager structures,
+			ChunkAccess chunk,
+			GenerationStep.Carving step
 	) {
 		if (SharedConstants.DEBUG_DISABLE_CARVERS || !this.settings.caveGeneration()) {
 			return;
@@ -388,7 +388,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 						continue;
 					}
 					int terrainSurface = waterData.terrainSurface(localX, localZ);
-					int oceanFloorGuardY = Math.max(chunk.getMinY(), terrainSurface - OCEAN_CARVER_FLOOR_BUFFER);
+					int oceanFloorGuardY = Math.max(chunk.getMinBuildHeight(), terrainSurface - OCEAN_CARVER_FLOOR_BUFFER);
 					floodGuardYByColumn[index] = Math.min(floodGuardYByColumn[index], oceanFloorGuardY);
 				}
 			}
@@ -406,22 +406,22 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	@Override
 	public void buildSurface(
-			@NonNull WorldGenRegion level,
-			@NonNull StructureManager structures,
-			@NonNull RandomState random,
-			@NonNull ChunkAccess chunk
+			WorldGenRegion level,
+			StructureManager structures,
+			RandomState random,
+			ChunkAccess chunk
 	) {
 	}
 
 	@Override
-	public void spawnOriginalMobs(@NonNull WorldGenRegion level) {
+	public void spawnOriginalMobs(WorldGenRegion level) {
 	}
 
 	@Override
 	public void applyBiomeDecoration(
-			@NonNull WorldGenLevel level,
-			@NonNull ChunkAccess chunk,
-			@NonNull StructureManager structures
+			WorldGenLevel level,
+			ChunkAccess chunk,
+			StructureManager structures
 	) {
 		super.applyBiomeDecoration(level, chunk, structures);
 		if (this.settings.caveGeneration()) {
@@ -433,14 +433,13 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	@Override
 	public void createStructures(
-			@NonNull RegistryAccess registryAccess,
-			@NonNull ChunkGeneratorStructureState structureState,
-			@NonNull StructureManager structures,
-			@NonNull ChunkAccess chunk,
-			@NonNull StructureTemplateManager templates,
-			@NonNull ResourceKey<Level> levelKey
+			RegistryAccess registryAccess,
+			ChunkGeneratorStructureState structureState,
+			StructureManager structures,
+			ChunkAccess chunk,
+			StructureTemplateManager templates
 	) {
-		super.createStructures(registryAccess, structureState, structures, chunk, templates, levelKey);
+		super.createStructures(registryAccess, structureState, structures, chunk, templates);
 		filterVillageStarts(registryAccess, chunk);
 		if (this.settings.addIgloos()
 				&& !isFrozenPeaksChunk(chunk.getPos(), structureState.randomState())) {
@@ -459,19 +458,19 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	@Override
 	public void createReferences(
-			@NonNull WorldGenLevel level,
-			@NonNull StructureManager structures,
-			@NonNull ChunkAccess chunk
+			WorldGenLevel level,
+			StructureManager structures,
+			ChunkAccess chunk
 	) {
 		super.createReferences(level, structures, chunk);
 	}
 
 	@Override
-	public @NonNull CompletableFuture<ChunkAccess> fillFromNoise(
-			@NonNull Blender blender,
-			@NonNull RandomState random,
-			@NonNull StructureManager structures,
-			@NonNull ChunkAccess chunk
+	public CompletableFuture<ChunkAccess> fillFromNoise(
+			Blender blender,
+			RandomState random,
+			StructureManager structures,
+			ChunkAccess chunk
 	) {
 		disableFastSpawnMode();
 		fillTellusSurface(random, structures, chunk);
@@ -479,13 +478,13 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	private void fillTellusSurface(
-			@NonNull RandomState random,
-			@NonNull StructureManager structures,
-			@NonNull ChunkAccess chunk
+			RandomState random,
+			StructureManager structures,
+			ChunkAccess chunk
 	) {
 		ChunkPos pos = chunk.getPos();
 		TellusWorldgenSources.prefetchForChunk(pos, this.settings);
-		int chunkMinY = chunk.getMinY();
+		int chunkMinY = chunk.getMinBuildHeight();
 		int chunkHeight = chunk.getHeight();
 		int chunkMaxY = chunkMinY + chunkHeight;
 		if (LOGGED_CHUNK_LAYOUT.compareAndSet(false, true) && Tellus.LOGGER.isInfoEnabled()) {
@@ -634,17 +633,17 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 						continue;
 					}
 					cursor.set(worldX, y, worldZ);
-					chunk.setBlockState(cursor, y < deepslateStart ? DEEPSLATE_STATE : STONE_STATE);
+					chunk.setBlockState(cursor, y < deepslateStart ? DEEPSLATE_STATE : STONE_STATE, false);
 					y++;
 				}
 				if (bedrockInChunk) {
 					cursor.set(worldX, bedrockY, worldZ);
-					chunk.setBlockState(cursor, BEDROCK_STATE);
+					chunk.setBlockState(cursor, BEDROCK_STATE, false);
 				}
 				if (hasWater && surface < waterSurface) {
 					for (int y = surface + 1; y <= waterSurface; y++) {
 						cursor.set(worldX, y, worldZ);
-						chunk.setBlockState(cursor, WATER_STATE);
+						chunk.setBlockState(cursor, WATER_STATE, false);
 				}
 			}
 					boolean underwater = hasWater && waterSurface > surface;
@@ -718,7 +717,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		int chunkMinZ = pos.getMinBlockZ();
 		int chunkMaxX = chunkMinX + CHUNK_MASK;
 		int chunkMaxZ = chunkMinZ + CHUNK_MASK;
-		int chunkMinY = chunk.getMinY();
+		int chunkMinY = chunk.getMinBuildHeight();
 		int chunkMaxY = chunkMinY + chunk.getHeight() - 1;
 		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 
@@ -783,7 +782,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 							cursor.set(x, y, z);
 							BlockState state = chunk.getBlockState(cursor);
 							if (isReplaceableCaveBlock(state)) {
-								chunk.setBlockState(cursor, CAVE_AIR_STATE);
+								chunk.setBlockState(cursor, CAVE_AIR_STATE, false);
 							}
 						}
 					}
@@ -1141,8 +1140,8 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 			boolean[] solidSections,
 			int[] sectionTopYs,
 			int solidMaxIndex,
-			@NonNull BlockState stone,
-			@NonNull BlockState deepslate,
+			BlockState stone,
+			BlockState deepslate,
 			int deepslateStart
 	) {
 		int sectionCount = sections.length;
@@ -1152,14 +1151,14 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 			if (bottomY < 0 && topY >= 0) {
 				continue;
 			}
-			@NonNull BlockState fill = topY < deepslateStart ? deepslate : stone;
-			@NonNull LevelChunkSection section = Objects.requireNonNull(sections[i], "section");
+			BlockState fill = topY < deepslateStart ? deepslate : stone;
+			LevelChunkSection section = Objects.requireNonNull(sections[i], "section");
 			fillSection(section, fill);
 			solidSections[i] = true;
 		}
 	}
 
-	private static void fillSection(@NonNull LevelChunkSection section, @NonNull BlockState fill) {
+	private static void fillSection(LevelChunkSection section, BlockState fill) {
 		for (int y = 0; y < CHUNK_SIDE; y++) {
 			for (int z = 0; z < CHUNK_SIDE; z++) {
 				for (int x = 0; x < CHUNK_SIDE; x++) {
@@ -1176,7 +1175,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		if (starts.isEmpty()) {
 			return;
 		}
-		Registry<Structure> registry = registryAccess.lookupOrThrow(Registries.STRUCTURE);
+		Registry<Structure> registry = registryAccess.registryOrThrow(Registries.STRUCTURE);
 		for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
 			StructureStart start = entry.getValue();
 			if (start == null || !start.isValid()) {
@@ -1241,16 +1240,16 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	public int getBaseHeight(
 			int x,
 			int z,
-			Heightmap.@NonNull Types heightmapType,
-			@NonNull LevelHeightAccessor heightAccessor,
-			@NonNull RandomState random
+			Heightmap.Types heightmapType,
+			LevelHeightAccessor heightAccessor,
+			RandomState random
 	) {
 		if (isFastSpawnMode()) {
-			int maxY = heightAccessor.getMaxY() - 1;
-			return Mth.clamp(this.seaLevel + 1, heightAccessor.getMinY(), maxY);
+			int maxY = heightAccessor.getMaxBuildHeight() - 1;
+			return Mth.clamp(this.seaLevel + 1, heightAccessor.getMinBuildHeight(), maxY);
 		}
 		int coverClass = sampleCoverClass(x, z);
-		ColumnHeights column = resolveFastColumnHeights(x, z, heightAccessor.getMinY(), heightAccessor.getMaxY(), coverClass);
+		ColumnHeights column = resolveFastColumnHeights(x, z, heightAccessor.getMinBuildHeight(), heightAccessor.getMaxBuildHeight(), coverClass);
 		int surface = column.terrainSurface();
 		if (heightmapType == Heightmap.Types.OCEAN_FLOOR_WG || heightmapType == Heightmap.Types.OCEAN_FLOOR) {
 			return surface + 1;
@@ -1262,13 +1261,13 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	@Override
-	public @NonNull NoiseColumn getBaseColumn(
+	public NoiseColumn getBaseColumn(
 			int x,
 			int z,
-			@NonNull LevelHeightAccessor heightAccessor,
-			@NonNull RandomState random
+			LevelHeightAccessor heightAccessor,
+			RandomState random
 	) {
-		int minY = heightAccessor.getMinY();
+		int minY = heightAccessor.getMinBuildHeight();
 		int height = heightAccessor.getHeight();
 		BlockState[] states = new BlockState[height];
 		Arrays.fill(states, AIR_STATE);
@@ -1300,7 +1299,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	@Override
-	public void addDebugScreenInfo(@NonNull List<String> info, @NonNull RandomState random, @NonNull BlockPos pos) {
+	public void addDebugScreenInfo(List<String> info, RandomState random, BlockPos pos) {
 		info.add(String.format("Tellus scale: %.1f", this.settings.worldScale()));
 	}
 
@@ -1354,7 +1353,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 						continue;
 					}
 					int topY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, worldX, worldZ) - 1;
-					if (topY < level.getMinY() || topY < this.seaLevel) {
+					if (topY < level.getMinBuildHeight() || topY < this.seaLevel) {
 						continue;
 					}
 					if (expectedSurface - topY > TREE_MAX_SURFACE_DROP) {
@@ -1566,14 +1565,14 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 			applyBadlandsBands(chunk, cursor, worldX, worldZ, surface, minY, palette);
 			return;
 		}
-		@NonNull BlockState top = underwater ? palette.underwaterTop() : palette.top();
-		@NonNull BlockState filler = palette.filler();
+		BlockState top = underwater ? palette.underwaterTop() : palette.top();
+		BlockState filler = palette.filler();
 		int depth = palette.depth();
 		int bottom = Math.max(minY, surface - depth + 1);
 
 		for (int y = surface; y >= bottom; y--) {
 			cursor.set(worldX, y, worldZ);
-			chunk.setBlockState(cursor, y == surface ? top : filler);
+			chunk.setBlockState(cursor, y == surface ? top : filler, false);
 		}
 	}
 
@@ -1589,11 +1588,11 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		int depth = Math.max(palette.depth(), BADLANDS_BAND_DEPTH);
 		int bottom = Math.max(minY, surface - depth + 1);
 		int offset = badlandsBandOffset(worldX, worldZ);
-		@NonNull BlockState top = palette.top();
+		BlockState top = palette.top();
 		for (int y = surface; y >= bottom; y--) {
 			cursor.set(worldX, y, worldZ);
-			@NonNull BlockState state = y == surface ? top : badlandsBand(y, offset);
-			chunk.setBlockState(cursor, state);
+			BlockState state = y == surface ? top : badlandsBand(y, offset);
+			chunk.setBlockState(cursor, state, false);
 		}
 	}
 
@@ -1605,13 +1604,13 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		return Math.floorMod((int) seed, range);
 	}
 
-	private static @NonNull BlockState badlandsBand(int y, int offset) {
+	private static BlockState badlandsBand(int y, int offset) {
 		int index = Math.floorDiv(y + offset, BADLANDS_BAND_HEIGHT);
 		int bandIndex = Math.floorMod(index, BADLANDS_BANDS.length);
 		return BADLANDS_BANDS[bandIndex];
 	}
 
-	public @NonNull BlockState resolveLodSurfaceBlock(int worldX, int worldZ, int surface, boolean underwater) {
+	public BlockState resolveLodSurfaceBlock(int worldX, int worldZ, int surface, boolean underwater) {
 		if (this.biomeSource instanceof EarthBiomeSource earthBiomeSource) {
 			Holder<Biome> biome = earthBiomeSource.getBiomeAtBlock(worldX, worldZ);
 			return resolveLodSurface(biome, worldX, worldZ, surface, underwater).top();
@@ -1619,7 +1618,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		return STONE_STATE;
 	}
 
-	public @NonNull BlockState resolveLodFillerBlock(int worldX, int worldZ, int surface, boolean underwater) {
+	public BlockState resolveLodFillerBlock(int worldX, int worldZ, int surface, boolean underwater) {
 		if (this.biomeSource instanceof EarthBiomeSource earthBiomeSource) {
 			Holder<Biome> biome = earthBiomeSource.getBiomeAtBlock(worldX, worldZ);
 			return resolveLodSurface(biome, worldX, worldZ, surface, underwater).filler();
@@ -1627,12 +1626,12 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		return STONE_STATE;
 	}
 
-	public @NonNull LodSurface resolveLodSurface(Holder<Biome> biome, int worldX, int worldZ, int surface, boolean underwater) {
+	public LodSurface resolveLodSurface(Holder<Biome> biome, int worldX, int worldZ, int surface, boolean underwater) {
 		int coverClass = sampleCoverClass(worldX, worldZ);
 		return resolveLodSurface(biome, worldX, worldZ, surface, underwater, coverClass);
 	}
 
-	public @NonNull LodSurface resolveLodSurface(
+	public LodSurface resolveLodSurface(
 			Holder<Biome> biome,
 			int worldX,
 			int worldZ,
@@ -1678,11 +1677,11 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		synchronized (this) {
 			cached = this.tellusCarverRunner;
 			if (cached == null) {
-				Registry<Block> blockRegistry = registryAccess.lookupOrThrow(Registries.BLOCK);
-				Registry<NoiseGeneratorSettings> noiseSettings = registryAccess.lookupOrThrow(Registries.NOISE_SETTINGS);
-				@NonNull Holder<NoiseGeneratorSettings> adaptedCarverNoiseSettings = Objects.requireNonNull(
+				Registry<Block> blockRegistry = registryAccess.registryOrThrow(Registries.BLOCK);
+				Registry<NoiseGeneratorSettings> noiseSettings = registryAccess.registryOrThrow(Registries.NOISE_SETTINGS);
+				Holder<NoiseGeneratorSettings> adaptedCarverNoiseSettings = Objects.requireNonNull(
 						TellusNoiseSettingsAdapter.adaptToTellusHeight(
-								noiseSettings.getOrThrow(NoiseGeneratorSettings.OVERWORLD),
+								noiseSettings.getHolderOrThrow(NoiseGeneratorSettings.OVERWORLD),
 								this.minY,
 								this.height,
 								this.seaLevel
@@ -1865,7 +1864,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		this.waterResolver.prefetchRegionsForArea(minBlockX, minBlockZ, maxBlockX, maxBlockZ);
 	}
 
-	public @NonNull BlockState resolveBadlandsBandBlock(int worldX, int worldZ, int y) {
+	public BlockState resolveBadlandsBandBlock(int worldX, int worldZ, int y) {
 		int offset = badlandsBandOffset(worldX, worldZ);
 		return badlandsBand(y, offset);
 	}
@@ -2482,10 +2481,10 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	) {
 		BiomeGenerationSettings original = biome.value().getGenerationSettings();
 		BiomeGenerationSettings.PlainBuilder builder = new BiomeGenerationSettings.PlainBuilder();
-		for (Holder<ConfiguredWorldCarver<?>> carver : original.getCarvers()) {
+		for (Holder<ConfiguredWorldCarver<?>> carver : original.getCarvers(GenerationStep.Carving.AIR)) {
 			Holder<ConfiguredWorldCarver<?>> safeCarver = Objects.requireNonNull(carver, "carver");
 			if (shouldKeepCarver(safeCarver, settings)) {
-				builder.addCarver(safeCarver);
+				builder.addCarver(GenerationStep.Carving.AIR, safeCarver);
 			}
 		}
 		List<HolderSet<PlacedFeature>> features = original.features();
@@ -2529,7 +2528,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	private static boolean shouldKeepCarver(Holder<ConfiguredWorldCarver<?>> carver, EarthGeneratorSettings settings) {
 		return carver.unwrapKey()
-				.map(ResourceKey::identifier)
+				.map(ResourceKey::location)
 				.map(id -> shouldKeepCarverId(id.getPath(), settings))
 				.orElse(true);
 	}
@@ -2544,7 +2543,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	private static boolean shouldKeepFeature(Holder<PlacedFeature> feature, EarthGeneratorSettings settings) {
 		return feature.unwrapKey()
-				.map(ResourceKey::identifier)
+				.map(ResourceKey::location)
 				.map(id -> shouldKeepFeatureId(id.getPath(), settings))
 				.orElse(true);
 	}
@@ -2582,7 +2581,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 	private boolean isStructureEnabled(Holder<Structure> structure) {
 		return structure.unwrapKey()
-				.map(ResourceKey::identifier)
+				.map(ResourceKey::location)
 				.map(id -> isStructureEnabled(id.getPath()))
 				.orElse(true);
 	}
@@ -2655,9 +2654,9 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	private void stripIglooStarts(RegistryAccess registryAccess, ChunkAccess chunk) {
-		Registry<Structure> registry = registryAccess.lookupOrThrow(Registries.STRUCTURE);
-		@NonNull Structure igloo = Objects.requireNonNull(
-				registry.getValueOrThrow(BuiltinStructures.IGLOO),
+		Registry<Structure> registry = registryAccess.registryOrThrow(Registries.STRUCTURE);
+		Structure igloo = Objects.requireNonNull(
+				registry.get(BuiltinStructures.IGLOO),
 				"iglooStructure"
 		);
 		StructureStart start = chunk.getStartForStructure(igloo);
@@ -2695,16 +2694,16 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	}
 
 	private void retargetStrongholdStarts(RegistryAccess registryAccess, ChunkAccess chunk) {
-		Registry<Structure> registry = registryAccess.lookupOrThrow(Registries.STRUCTURE);
-		@NonNull Structure stronghold = Objects.requireNonNull(
-				registry.getValueOrThrow(BuiltinStructures.STRONGHOLD),
+		Registry<Structure> registry = registryAccess.registryOrThrow(Registries.STRUCTURE);
+		Structure stronghold = Objects.requireNonNull(
+				registry.get(BuiltinStructures.STRONGHOLD),
 				"strongholdStructure"
 		);
 		StructureStart start = chunk.getStartForStructure(stronghold);
 		if (start == null || !start.isValid()) {
 			return;
 		}
-		int chunkMinY = chunk.getMinY();
+		int chunkMinY = chunk.getMinBuildHeight();
 		int chunkMaxY = chunkMinY + chunk.getHeight() - 1;
 		BlockPos center = start.getBoundingBox().getCenter();
 		int centerX = center.getX();
@@ -2756,15 +2755,15 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		if (starts.isEmpty()) {
 			return;
 		}
-		Registry<Structure> registry = registryAccess.lookupOrThrow(Registries.STRUCTURE);
+		Registry<Structure> registry = registryAccess.registryOrThrow(Registries.STRUCTURE);
 		Structure normalMineshaft = Objects.requireNonNull(
-				registry.getValueOrThrow(BuiltinStructures.MINESHAFT),
+				registry.get(BuiltinStructures.MINESHAFT),
 				"normalMineshaft"
 		);
-		int chunkMinY = chunk.getMinY();
+		int chunkMinY = chunk.getMinBuildHeight();
 		int chunkMaxY = chunkMinY + chunk.getHeight() - 1;
 			for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
-				@NonNull Structure structure = Objects.requireNonNull(entry.getKey(), "structure");
+				Structure structure = Objects.requireNonNull(entry.getKey(), "structure");
 				if (structure != normalMineshaft) {
 					continue;
 				}
@@ -2814,15 +2813,15 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		if (starts.isEmpty()) {
 			return;
 		}
-		Registry<Structure> registry = registryAccess.lookupOrThrow(Registries.STRUCTURE);
-		@NonNull Structure trialChambers = Objects.requireNonNull(
-				registry.getValueOrThrow(BuiltinStructures.TRIAL_CHAMBERS),
+		Registry<Structure> registry = registryAccess.registryOrThrow(Registries.STRUCTURE);
+		Structure trialChambers = Objects.requireNonNull(
+				registry.get(BuiltinStructures.TRIAL_CHAMBERS),
 				"trialChambers"
 		);
-		int chunkMinY = chunk.getMinY();
+		int chunkMinY = chunk.getMinBuildHeight();
 		int chunkMaxY = chunkMinY + chunk.getHeight() - 1;
 		for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
-			@NonNull Structure structure = Objects.requireNonNull(entry.getKey(), "structure");
+			Structure structure = Objects.requireNonNull(entry.getKey(), "structure");
 			if (structure != trialChambers) {
 				continue;
 			}
@@ -2890,7 +2889,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	private static boolean isTreeFeature(PlacedFeature feature) {
 		return feature.getFeatures().anyMatch(configured -> {
 			Feature<?> type = configured.feature();
-			return type == Feature.TREE || type == Feature.FALLEN_TREE;
+			return type == Feature.TREE;
 		});
 	}
 
@@ -2907,7 +2906,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		}
 
 		@Override
-		public @NonNull Stream<Holder.Reference<StructureSet>> listElements() {
+		public Stream<Holder.Reference<StructureSet>> listElements() {
 			return Objects.requireNonNull(
 					this.delegate.listElements().filter(this.predicate),
 					"listElements"
@@ -2915,17 +2914,17 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		}
 
 		@Override
-		public @NonNull Stream<HolderSet.Named<StructureSet>> listTags() {
+		public Stream<HolderSet.Named<StructureSet>> listTags() {
 			return Objects.requireNonNull(this.delegate.listTags(), "listTags");
 		}
 
 		@Override
-		public @NonNull Optional<Holder.Reference<StructureSet>> get(@NonNull ResourceKey<StructureSet> key) {
+		public Optional<Holder.Reference<StructureSet>> get(ResourceKey<StructureSet> key) {
 			return Objects.requireNonNull(this.delegate.get(key), "getStructureSet");
 		}
 
 		@Override
-		public @NonNull Optional<HolderSet.Named<StructureSet>> get(@NonNull TagKey<StructureSet> tag) {
+		public Optional<HolderSet.Named<StructureSet>> get(TagKey<StructureSet> tag) {
 			return Objects.requireNonNull(this.delegate.get(tag), "getStructureSetTag");
 		}
 	}
@@ -2944,7 +2943,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		int roll = random.nextInt(COVER_ROLL_RANGE);
 		if (roll < SNOW_ICE_CHANCE && (!reduceIce || random.nextBoolean())) {
 			cursor.set(worldX, surface, worldZ);
-			chunk.setBlockState(cursor, ICE_STATE);
+			chunk.setBlockState(cursor, ICE_STATE, false);
 			return;
 		}
 		if (roll < SNOW_ICE_CHANCE + POWDER_SNOW_CHANCE) {
@@ -2955,12 +2954,12 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 					break;
 				}
 				cursor.set(worldX, y, worldZ);
-				chunk.setBlockState(cursor, POWDER_SNOW_STATE);
+				chunk.setBlockState(cursor, POWDER_SNOW_STATE, false);
 			}
 			return;
 		}
 		cursor.set(worldX, surface, worldZ);
-		chunk.setBlockState(cursor, SNOW_BLOCK_STATE);
+		chunk.setBlockState(cursor, SNOW_BLOCK_STATE, false);
 	}
 
 	public void applyRealtimeSnowCover(WorldGenLevel level, ChunkAccess chunk) {
@@ -2973,7 +2972,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 		ChunkPos pos = chunk.getPos();
 		int chunkMinX = pos.getMinBlockX();
 		int chunkMinZ = pos.getMinBlockZ();
-		int minY = chunk.getMinY();
+		int minY = chunk.getMinBuildHeight();
 		int maxY = minY + chunk.getHeight();
 		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 		BlockState snowLayer = SNOW_LAYER_STATE;
@@ -3033,7 +3032,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 
 		int chunkMinX = pos.getMinBlockX();
 		int chunkMinZ = pos.getMinBlockZ();
-		int minY = Math.max(this.minY + 4, chunk.getMinY() + 4);
+		int minY = Math.max(this.minY + 4, chunk.getMinBuildHeight() + 4);
 		int spawned = 0;
 		int attempts = 6 + random.nextInt(6);
 		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
@@ -3074,7 +3073,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 						entity -> {
 						},
 						cursor.immutable(),
-						EntitySpawnReason.CHUNK_GENERATION,
+						MobSpawnType.CHUNK_GENERATION,
 						false,
 						false
 				);
@@ -3082,7 +3081,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 					return;
 				}
 				axolotl.setPersistenceRequired();
-				axolotl.snapTo(worldX + 0.5, y + 0.1, worldZ + 0.5, random.nextFloat() * 360.0f, 0.0f);
+				axolotl.moveTo(worldX + 0.5, y + 0.1, worldZ + 0.5, random.nextFloat() * 360.0f, 0.0f);
 				if (serverLevel.addFreshEntity(axolotl)) {
 					spawned++;
 				}
@@ -3133,10 +3132,10 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 	private record MountainSurfaceContext(boolean retainSnow, int darkRockScore) {
 	}
 
-	public record LodSurface(@NonNull BlockState top, @NonNull BlockState filler) {
+	public record LodSurface(BlockState top, BlockState filler) {
 	}
 
-	private record SurfacePalette(@NonNull BlockState top, @NonNull BlockState underwaterTop, @NonNull BlockState filler, int depth) {
+	private record SurfacePalette(BlockState top, BlockState underwaterTop, BlockState filler, int depth) {
 		static SurfacePalette defaultOverworld() {
 			return new SurfacePalette(GRASS_BLOCK_STATE, DIRT_STATE, DIRT_STATE, SURFACE_DEPTH);
 		}
@@ -3197,7 +3196,7 @@ public final class EarthChunkGenerator extends ChunkGenerator {
 			return new SurfacePalette(SAND_STATE, SAND_STATE, SAND_STATE, SURFACE_DEPTH);
 		}
 
-		static SurfacePalette ocean(@NonNull BlockState top) {
+		static SurfacePalette ocean(BlockState top) {
 			return new SurfacePalette(top, top, top, SURFACE_DEPTH);
 		}
 

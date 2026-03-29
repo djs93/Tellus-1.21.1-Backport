@@ -16,6 +16,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.Beardifier;
+import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
@@ -27,21 +28,20 @@ import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.carver.CarvingContext;
 import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import net.minecraft.server.level.WorldGenRegion;
-import org.jspecify.annotations.NonNull;
 
 public final class TellusVanillaCarverRunner {
 	private static final int CARVER_RADIUS_CHUNKS = 8;
 
-	private final @NonNull BiomeSource biomeSource;
-	private final @NonNull NoiseBasedChunkGenerator carvingContextGenerator;
-	private final @NonNull NoiseGeneratorSettings contextNoiseSettings;
+	private final BiomeSource biomeSource;
+	private final NoiseBasedChunkGenerator carvingContextGenerator;
+	private final NoiseGeneratorSettings contextNoiseSettings;
 	private final List<ConfiguredWorldCarver<?>> configuredCarvers;
 	private final int chunkMinY;
 
 	public TellusVanillaCarverRunner(
-			@NonNull BiomeSource biomeSource,
+			BiomeSource biomeSource,
 			Registry<Block> blockRegistry,
-			@NonNull Holder<NoiseGeneratorSettings> noiseSettings,
+			Holder<NoiseGeneratorSettings> noiseSettings,
 			int tellusMinY,
 			int tellusHeight
 	) {
@@ -60,9 +60,9 @@ public final class TellusVanillaCarverRunner {
 	public void applyCarvers(
 			WorldGenRegion level,
 			long worldSeed,
-			@NonNull RandomState randomState,
+			RandomState randomState,
 			BiomeManager biomeManager,
-			@NonNull StructureManager structures,
+			StructureManager structures,
 			ChunkAccess chunk,
 			int[] floodGuardYByColumn
 	) {
@@ -79,7 +79,7 @@ public final class TellusVanillaCarverRunner {
 		WorldgenRandom random = new WorldgenRandom(new LegacyRandomSource(RandomSupport.generateUniqueSeed()));
 		ChunkPos targetPos = chunk.getPos();
 		RegistryAccess registryAccess = level.registryAccess();
-		Aquifer.@NonNull FluidPicker fluidPicker = Objects.requireNonNull(
+		Aquifer.FluidPicker fluidPicker = Objects.requireNonNull(
 				createFluidPicker(this.chunkMinY + 8),
 				"fluidPicker"
 		);
@@ -127,29 +127,48 @@ public final class TellusVanillaCarverRunner {
 				}
 			}
 		}
-		if (chunk instanceof ProtoChunk protoChunk && carvingMask != protoChunk.getCarvingMask()) {
-			protoChunk.setCarvingMask(carvingMask);
+		if (chunk instanceof ProtoChunk protoChunk && carvingMask != protoChunk.getCarvingMask(GenerationStep.Carving.AIR)) {
+			protoChunk.setCarvingMask(GenerationStep.Carving.AIR, carvingMask);
 		}
 	}
 
-	private static @NonNull CarvingMask getCarvingMask(ChunkAccess chunk, int[] floodGuardYByColumn) {
+	private static CarvingMask getCarvingMask(ChunkAccess chunk, int[] floodGuardYByColumn) {
 		CarvingMask baseMask;
 		if (chunk instanceof ProtoChunk protoChunk) {
-			baseMask = protoChunk.getOrCreateCarvingMask();
+			baseMask = protoChunk.getOrCreateCarvingMask(GenerationStep.Carving.AIR);
 		} else {
-			baseMask = new CarvingMask(chunk.getHeight(), chunk.getMinY());
+			baseMask = new CarvingMask(chunk.getHeight(), chunk.getMinBuildHeight());
 		}
-		if (floodGuardYByColumn == null) {
-			return Objects.requireNonNull(baseMask, "baseMask");
+
+		// Apply flood guard: prevent carving below per-column guard Y levels (e.g., under ocean floors).
+		if (floodGuardYByColumn != null) {
+			int minBuildHeight = chunk.getMinBuildHeight();
+			int maxBuildHeight = minBuildHeight + chunk.getHeight();
+			int minBlockX = chunk.getPos().getMinBlockX();
+			int minBlockZ = chunk.getPos().getMinBlockZ();
+
+			for (int localX = 0; localX < 16; localX++) {
+				for (int localZ = 0; localZ < 16; localZ++) {
+					int index = chunkIndex(localX, localZ);
+					if (index < 0 || index >= floodGuardYByColumn.length) {
+						continue;
+					}
+					int guardY = floodGuardYByColumn[index];
+					// If guardY is at or below the base, there is nothing to protect in this column.
+					if (guardY <= minBuildHeight) {
+						continue;
+					}
+					int clampedGuardY = Math.min(guardY, maxBuildHeight);
+					for (int y = minBuildHeight; y < clampedGuardY; y++) {
+						baseMask.set(minBlockX + localX, y, minBlockZ + localZ);
+					}
+				}
+			}
 		}
-		CarvingMask guardedMask = new CarvingMask(baseMask.toArray(), chunk.getMinY());
-		guardedMask.setAdditionalMask((x, y, z) ->
-				y >= floodGuardYByColumn[chunkIndex(x & 15, z & 15)]
-		);
-		return Objects.requireNonNull(guardedMask, "guardedMask");
+		return Objects.requireNonNull(baseMask, "baseMask");
 	}
 
-	private static Aquifer.@NonNull FluidPicker createFluidPicker(int lavaLevel) {
+	private static Aquifer.FluidPicker createFluidPicker(int lavaLevel) {
 		Aquifer.FluidStatus lava = new Aquifer.FluidStatus(lavaLevel, Blocks.LAVA.defaultBlockState());
 		Aquifer.FluidStatus air = new Aquifer.FluidStatus(Integer.MIN_VALUE, Blocks.AIR.defaultBlockState());
 		return Objects.requireNonNull((x, y, z) -> y < lavaLevel ? lava : air, "fluidPicker");

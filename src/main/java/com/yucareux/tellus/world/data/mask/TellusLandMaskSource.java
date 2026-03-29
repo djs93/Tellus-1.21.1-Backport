@@ -10,8 +10,6 @@ import java.io.IOException;
 import java.util.Objects;
 import javax.imageio.ImageIO;
 import net.minecraft.util.Mth;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 public final class TellusLandMaskSource {
 	private static final double EQUATOR_CIRCUMFERENCE = 40075017.0;
@@ -26,7 +24,7 @@ public final class TellusLandMaskSource {
 	private static final int MAX_CACHE_TILES = intProperty("tellus.landmask.cacheTiles", 256);
 
 	private final PmTilesReader reader;
-	private final LoadingCache<TileKey, @Nullable LandMaskTile> cache;
+	private final LoadingCache<TileKey, LandMaskTile> cache;
 	private final int minZoom;
 	private final int maxZoom;
 	private final boolean available;
@@ -52,7 +50,7 @@ public final class TellusLandMaskSource {
 				.maximumSize(MAX_CACHE_TILES)
 				.build(new CacheLoader<>() {
 					@Override
-					public @Nullable LandMaskTile load(TileKey key) throws Exception {
+					public LandMaskTile load(TileKey key) throws Exception {
 						return TellusLandMaskSource.this.loadTile(key);
 					}
 				});
@@ -118,7 +116,7 @@ public final class TellusLandMaskSource {
 		}
 	}
 
-	private LandMaskTile getTile(@NonNull TileKey key) {
+	private LandMaskTile getTile(TileKey key) {
 		try {
 			return this.cache.get(key);
 		} catch (Exception e) {

@@ -32,7 +32,7 @@ final class TellusConfiguredCarvers {
 			int tellusMinY,
 			int tellusHeight
 	) {
-		HolderSet<Block> replaceables = blockRegistry.getOrThrow(BlockTags.OVERWORLD_CARVER_REPLACEABLES);
+		HolderSet<Block> replaceables = blockRegistry.getOrCreateTag(BlockTags.OVERWORLD_CARVER_REPLACEABLES);
 		int caveCeilingY = TellusHeightRemapper.remapVanillaAbsolute(220, tellusMinY, tellusHeight);
 		int caveExtraCeilingY = TellusHeightRemapper.remapVanillaAbsolute(96, tellusMinY, tellusHeight);
 		int canyonFloorY = TellusHeightRemapper.remapVanillaAbsolute(24, tellusMinY, tellusHeight);

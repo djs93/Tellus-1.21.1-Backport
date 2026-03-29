@@ -6,12 +6,10 @@ import com.yucareux.tellus.client.widget.map.SlippyMapPoint;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.resources.Identifier;
-import org.jspecify.annotations.NonNull;
+import net.minecraft.resources.ResourceLocation;
 
 public class MarkerMapComponent implements MapComponent {
-	private static final @NonNull Identifier WIDGETS_TEXTURE =
+	private static final ResourceLocation WIDGETS_TEXTURE =
 			Objects.requireNonNull(Tellus.id("textures/gui/widgets.png"), "widgetsTexture");
 	private static final int TEXTURE_SIZE = 256;
 	private static final int MARKER_SIZE = 16;
@@ -41,13 +39,13 @@ public class MarkerMapComponent implements MapComponent {
 			return;
 		}
 
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 		int markerX = this.marker.getX(map.getCameraZoom()) - map.getCameraX();
 		int markerY = this.marker.getY(map.getCameraZoom()) - map.getCameraY();
 		int guiMarkerX = markerX / scale;
 		int guiMarkerY = markerY / scale;
 
-		graphics.blit(RenderPipelines.GUI_TEXTURED, WIDGETS_TEXTURE, guiMarkerX - 8, guiMarkerY - 16, this.offsetX,
+		graphics.blit(WIDGETS_TEXTURE, guiMarkerX - 8, guiMarkerY - 16, this.offsetX,
 				this.offsetY, MARKER_SIZE, MARKER_SIZE, TEXTURE_SIZE, TEXTURE_SIZE);
 	}
 

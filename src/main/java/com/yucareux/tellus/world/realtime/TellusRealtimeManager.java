@@ -35,7 +35,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkSource;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.GameRules;
 
 	public final class TellusRealtimeManager {
 	private static final long WEATHER_REFRESH_MS = 10L * 60L * 1000L;
@@ -647,30 +647,33 @@ import net.minecraft.world.level.gamerules.GameRules;
 
 	private void applyTimeRules(ServerLevel level, MinecraftServer server) {
 		GameRules rules = level.getGameRules();
-		Boolean daylight = (Boolean) rules.get(GameRules.ADVANCE_TIME);
-		Integer sleepingPercent = (Integer) rules.get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
+		GameRules.BooleanValue daylightRule = rules.getRule(GameRules.RULE_DAYLIGHT);
+		GameRules.IntegerValue sleepRule = rules.getRule(GameRules.RULE_PLAYERS_SLEEPING_PERCENTAGE);
+		boolean daylight = daylightRule.get();
+		int sleepingPercent = sleepRule.get();
 		if (!timeRulesCaptured) {
-			cachedDaylightCycle = daylight != null && daylight;
-			cachedSleepPercentage = sleepingPercent == null ? -1 : sleepingPercent;
+			cachedDaylightCycle = daylight;
+			cachedSleepPercentage = sleepingPercent;
 			timeRulesCaptured = true;
 		}
-		if (daylight == null || daylight) {
-			rules.set(GameRules.ADVANCE_TIME, Boolean.FALSE, server);
+		if (daylight) {
+			daylightRule.set(false, server);
 		}
-		if (sleepingPercent == null || sleepingPercent != 101) {
-			rules.set(GameRules.PLAYERS_SLEEPING_PERCENTAGE, 101, server);
+		if (sleepingPercent != 101) {
+			sleepRule.set(101, server);
 		}
 	}
 
 	private void applyWeatherRules(ServerLevel level, MinecraftServer server) {
 		GameRules rules = level.getGameRules();
-		Boolean weatherCycle = (Boolean) rules.get(GameRules.ADVANCE_WEATHER);
+		GameRules.BooleanValue weatherRule = rules.getRule(GameRules.RULE_WEATHER_CYCLE);
+		boolean weatherCycle = weatherRule.get();
 		if (!weatherRulesCaptured) {
-			cachedWeatherCycle = weatherCycle != null && weatherCycle;
+			cachedWeatherCycle = weatherCycle;
 			weatherRulesCaptured = true;
 		}
-		if (weatherCycle == null || weatherCycle) {
-			rules.set(GameRules.ADVANCE_WEATHER, Boolean.FALSE, server);
+		if (weatherCycle) {
+			weatherRule.set(false, server);
 		}
 	}
 
@@ -684,13 +687,13 @@ import net.minecraft.world.level.gamerules.GameRules;
 			return;
 		}
 		GameRules rules = level.getGameRules();
-		Boolean daylight = (Boolean) rules.get(GameRules.ADVANCE_TIME);
-		Integer sleepingPercent = (Integer) rules.get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
-		if (daylight == null || daylight != cachedDaylightCycle) {
-			rules.set(GameRules.ADVANCE_TIME, cachedDaylightCycle, server);
+		GameRules.BooleanValue daylightRule = rules.getRule(GameRules.RULE_DAYLIGHT);
+		GameRules.IntegerValue sleepRule = rules.getRule(GameRules.RULE_PLAYERS_SLEEPING_PERCENTAGE);
+		if (daylightRule.get() != cachedDaylightCycle) {
+			daylightRule.set(cachedDaylightCycle, server);
 		}
-		if (cachedSleepPercentage >= 0 && (sleepingPercent == null || sleepingPercent != cachedSleepPercentage)) {
-			rules.set(GameRules.PLAYERS_SLEEPING_PERCENTAGE, cachedSleepPercentage, server);
+		if (cachedSleepPercentage >= 0 && sleepRule.get() != cachedSleepPercentage) {
+			sleepRule.set(cachedSleepPercentage, server);
 		}
 		timeRulesCaptured = false;
 	}
@@ -700,9 +703,9 @@ import net.minecraft.world.level.gamerules.GameRules;
 			return;
 		}
 		GameRules rules = level.getGameRules();
-		Boolean weatherCycle = (Boolean) rules.get(GameRules.ADVANCE_WEATHER);
-		if (weatherCycle == null || weatherCycle != cachedWeatherCycle) {
-			rules.set(GameRules.ADVANCE_WEATHER, cachedWeatherCycle, server);
+		GameRules.BooleanValue weatherRule = rules.getRule(GameRules.RULE_WEATHER_CYCLE);
+		if (weatherRule.get() != cachedWeatherCycle) {
+			weatherRule.set(cachedWeatherCycle, server);
 		}
 		weatherRulesCaptured = false;
 	}

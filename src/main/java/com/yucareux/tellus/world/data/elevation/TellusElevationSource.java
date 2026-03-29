@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import javax.imageio.ImageIO;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Mth;
-import org.jspecify.annotations.NonNull;
 
 public final class TellusElevationSource {
 	private static final double EQUATOR_CIRCUMFERENCE = 40075017.0;
@@ -35,7 +34,7 @@ public final class TellusElevationSource {
 	private static final ShortRaster MISSING_RASTER = ShortRaster.create(1, 1);
 
 	private final Path cacheRoot;
-	private final LoadingCache<@NonNull TileKey, ShortRaster> cache;
+	private final LoadingCache<TileKey, ShortRaster> cache;
 	private final ArcticDemElevationSource arcticDem = new ArcticDemElevationSource();
 	private volatile EarthGeneratorSettings.DemProvider lastLoggedProvider;
 
@@ -43,9 +42,9 @@ public final class TellusElevationSource {
 		this.cacheRoot = FabricLoader.getInstance().getGameDir().resolve("tellus/cache/elevation-tellus");
 		this.cache = CacheBuilder.newBuilder()
 				.maximumSize(MAX_CACHE_TILES)
-				.build(new CacheLoader<@NonNull TileKey, ShortRaster>() {
+				.build(new CacheLoader<TileKey, ShortRaster>() {
 					@Override
-					public ShortRaster load(@NonNull TileKey key) throws Exception {
+					public ShortRaster load(TileKey key) throws Exception {
 						return TellusElevationSource.this.loadTile(key);
 					}
 				});
@@ -222,7 +221,7 @@ public final class TellusElevationSource {
 		return new TileKey(zoom, tileX, tileY);
 	}
 
-	private void prefetchTile(@NonNull TileKey key) {
+	private void prefetchTile(TileKey key) {
 		if (this.cache.getIfPresent(key) != null) {
 			return;
 		}
@@ -245,7 +244,7 @@ public final class TellusElevationSource {
 		}
 	}
 
-	private ShortRaster getTile(@NonNull TileKey key) {
+	private ShortRaster getTile(TileKey key) {
 		try {
 			ShortRaster raster = this.cache.get(key);
 			return raster == MISSING_RASTER ? null : raster;
@@ -255,7 +254,7 @@ public final class TellusElevationSource {
 		}
 	}
 
-	private ShortRaster loadTile(@NonNull TileKey key) {
+	private ShortRaster loadTile(TileKey key) {
 		Path cachePath = this.cacheRoot.resolve(key.zoom() + "/" + key.x() + "/" + key.y() + ".png");
 		if (Files.exists(cachePath)) {
 			try (InputStream input = Files.newInputStream(cachePath)) {

@@ -22,7 +22,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import net.minecraft.client.Minecraft;
-import org.jspecify.annotations.NonNull;
 
 public class SlippyMapTileCache {
 	private static final int CACHE_SIZE = 1024;
@@ -96,7 +95,7 @@ public class SlippyMapTileCache {
 		return this.createErrorImage();
 	}
 
-	private @NonNull InputStream getStream(SlippyMapTilePos pos) throws IOException {
+	private InputStream getStream(SlippyMapTilePos pos) throws IOException {
 		Path cachePath = this.cacheRoot.resolve(pos.getCacheName());
 		if (Files.exists(cachePath)) {
 			return new BufferedInputStream(Files.newInputStream(cachePath));
@@ -137,7 +136,7 @@ public class SlippyMapTileCache {
 		NativeImage result = new NativeImage(SlippyMap.TILE_SIZE, SlippyMap.TILE_SIZE, false);
 		for (int x = 0; x < SlippyMap.TILE_SIZE; x++) {
 			for (int y = 0; y < SlippyMap.TILE_SIZE; y++) {
-				result.setPixelABGR(x, y, 0xFF0000FF);
+				result.setPixelRGBA(x, y, 0xFF0000FF);
 			}
 		}
 		return result;

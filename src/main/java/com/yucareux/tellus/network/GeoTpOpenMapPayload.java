@@ -6,10 +6,9 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import java.util.Objects;
-import org.jspecify.annotations.NonNull;
 
 public record GeoTpOpenMapPayload(double latitude, double longitude) implements CustomPacketPayload {
-	public static final @NonNull Type<GeoTpOpenMapPayload> TYPE = new Type<>(
+	public static final Type<GeoTpOpenMapPayload> TYPE = new Type<>(
 			Tellus.id("geotp_open_map")
 	);
 	public static final StreamCodec<FriendlyByteBuf, GeoTpOpenMapPayload> CODEC = StreamCodec.composite(
@@ -21,7 +20,7 @@ public record GeoTpOpenMapPayload(double latitude, double longitude) implements 
 	);
 
 	@Override
-	public @NonNull Type<? extends CustomPacketPayload> type() {
+	public Type<? extends CustomPacketPayload> type() {
 		return TYPE;
 	}
 

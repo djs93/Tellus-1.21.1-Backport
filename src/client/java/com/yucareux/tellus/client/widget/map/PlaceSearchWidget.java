@@ -16,10 +16,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
 import org.lwjgl.glfw.GLFW;
 
 public class PlaceSearchWidget extends EditBox {
@@ -73,7 +70,7 @@ public class PlaceSearchWidget extends EditBox {
 	}
 
 	@Override
-	public void renderWidget(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+	public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
 		int x = this.getX();
 		int y = this.getY();
 		int width = this.getWidth();
@@ -82,10 +79,10 @@ public class PlaceSearchWidget extends EditBox {
 		graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFFA0A0A0);
 		graphics.fill(x, y, x + width, y + height, this.state.getBackgroundColor());
 
-		graphics.pose().pushMatrix();
-		graphics.pose().translate(SEARCH_TEXT_OFFSET_X, (height - 8) / 2.0F - 1.0F);
+		graphics.pose().pushPose();
+		graphics.pose().translate(SEARCH_TEXT_OFFSET_X, (height - 8) / 2.0F - 1.0F, 0);
 		super.renderWidget(graphics, mouseX, mouseY, delta);
-		graphics.pose().popMatrix();
+		graphics.pose().popPose();
 
 		if (shouldShowSuggestions()) {
 			layoutSuggestionButtons();
@@ -96,16 +93,16 @@ public class PlaceSearchWidget extends EditBox {
 	}
 
 	@Override
-	public boolean mouseClicked(@NonNull MouseButtonEvent event, boolean isPrimary) {
-		if (this.isVisible() && shouldShowSuggestions() && event.button() == 0) {
-			for (Button button : this.suggestionButtons) {
-				if (button.mouseClicked(event, isPrimary)) {
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (this.isVisible() && shouldShowSuggestions() && button == 0) {
+			for (Button b : this.suggestionButtons) {
+				if (b.mouseClicked(mouseX, mouseY, button)) {
 					return true;
 				}
 			}
 		}
 
-		return super.mouseClicked(event, isPrimary);
+		return super.mouseClicked(mouseX, mouseY, button);
 	}
 
 	@Override
@@ -126,22 +123,21 @@ public class PlaceSearchWidget extends EditBox {
 	}
 
 	@Override
-	public boolean keyPressed(@NonNull KeyEvent event) {
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
 		if (!this.isFocused()) {
 			return false;
 		}
 
 		this.pause = false;
 
-		int key = event.key();
-		if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+		if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
 			cancelPendingSuggest();
 			clearSuggestions();
 			this.handleAccept();
 			return true;
 		}
 
-		if (super.keyPressed(event)) {
+		if (super.keyPressed(keyCode, scanCode, modifiers)) {
 			this.state = State.OK;
 			return true;
 		}
@@ -289,8 +285,8 @@ public class PlaceSearchWidget extends EditBox {
 		}
 
 		@Override
-		protected void renderContents(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-			this.renderDefaultSprite(graphics);
+		protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+			super.renderWidget(graphics, mouseX, mouseY, delta);
 			Component message = this.getMessage();
 			int textWidth = Minecraft.getInstance().font.width(message);
 			int availableWidth = Math.max(0, this.getWidth() - SUGGESTION_TEXT_PADDING * 2);

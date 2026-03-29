@@ -2,15 +2,12 @@ package com.yucareux.tellus.client.preview;
 
 import com.yucareux.tellus.worldgen.EarthGeneratorSettings;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 public final class TerrainPreviewWidget extends AbstractWidget implements AutoCloseable {
 	private static final float DEFAULT_ROTATION_X = (float) Math.toRadians(18.0);
@@ -26,7 +23,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 	private static final long AUTO_RESUME_DELAY_MS = 1200L;
 	private static final int FULLSCREEN_BUTTON_SIZE = 20;
 	private static final int FULLSCREEN_BUTTON_PADDING = 6;
-	private static final @NonNull Component FULLSCREEN_LABEL = Component.literal("[ ]");
+	private static final Component FULLSCREEN_LABEL = Component.literal("[ ]");
 	private static final int LOADING_PANEL_BG = 0xCC101010;
 	private static final int LOADING_PANEL_BORDER = 0xFF3A3A3A;
 	private static final int LOADING_BAR_BG = 0xFF1A1A1A;
@@ -37,7 +34,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 	private final TerrainPreview preview;
 	private final boolean ownsPreview;
 	private final Button fullscreenButton;
-	private @Nullable Runnable fullscreenAction;
+	private Runnable fullscreenAction;
 	private boolean dragging;
 	private float rotationX = DEFAULT_ROTATION_X;
 	private float rotationY = DEFAULT_ROTATION_Y;
@@ -68,7 +65,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 		this.preview.requestRebuild(settings);
 	}
 
-	public void setFullscreenAction(@Nullable Runnable action) {
+	public void setFullscreenAction(Runnable action) {
 		this.fullscreenAction = action;
 		this.fullscreenButton.active = action != null;
 	}
@@ -81,7 +78,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 		return new ViewState(this.rotationX, this.rotationY, this.zoom);
 	}
 
-	public void setViewState(@NonNull ViewState state) {
+	public void setViewState(ViewState state) {
 		this.rotationX = Mth.clamp(state.rotationX(), MIN_ROTATION_X, MAX_ROTATION_X);
 		this.rotationY = state.rotationY();
 		this.zoom = Mth.clamp(state.zoom(), MIN_ZOOM, MAX_ZOOM);
@@ -96,7 +93,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 	}
 
 	@Override
-	protected void renderWidget(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+	protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
 		this.renderBlurredBackground(graphics);
 
 		int inset = 0;
@@ -111,33 +108,36 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 	}
 
 	@Override
-	public void onClick(@NonNull MouseButtonEvent event, boolean doubleClick) {
-		if (this.fullscreenAction != null && this.fullscreenButton.isMouseOver(event.x(), event.y())) {
-			this.fullscreenButton.mouseClicked(event, doubleClick);
-			return;
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (this.fullscreenAction != null && this.fullscreenButton.isMouseOver(mouseX, mouseY)) {
+			this.fullscreenButton.mouseClicked(mouseX, mouseY, button);
+			return true;
 		}
-		if (event.button() == 0) {
+		if (button == 0) {
 			this.dragging = true;
 			this.lastInteractionTime = System.currentTimeMillis();
 		}
+		return super.mouseClicked(mouseX, mouseY, button);
 	}
 
 	@Override
-	protected void onDrag(@NonNull MouseButtonEvent event, double deltaX, double deltaY) {
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
 		if (this.dragging) {
 			this.rotationY += (float) deltaX * ROTATION_SPEED;
 			this.rotationX = Mth.clamp(this.rotationX + (float) deltaY * ROTATION_SPEED, MIN_ROTATION_X, MAX_ROTATION_X);
 			this.lastInteractionTime = System.currentTimeMillis();
 		}
+		return true;
 	}
 
 	@Override
-	public void onRelease(@NonNull MouseButtonEvent event) {
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		if (this.fullscreenAction != null) {
-			this.fullscreenButton.mouseReleased(event);
+			this.fullscreenButton.mouseReleased(mouseX, mouseY, button);
 		}
 		this.dragging = false;
 		this.lastInteractionTime = System.currentTimeMillis();
+		return true;
 	}
 
 	@Override
@@ -154,7 +154,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 	}
 
 	@Override
-	protected void updateWidgetNarration(@NonNull NarrationElementOutput narration) {
+	protected void updateWidgetNarration(NarrationElementOutput narration) {
 	}
 
 	private void renderBlurredBackground(GuiGraphics graphics) {
@@ -221,7 +221,7 @@ public final class TerrainPreviewWidget extends AbstractWidget implements AutoCl
 		}
 	}
 
-	private void renderFullscreenButton(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+	private void renderFullscreenButton(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
 		if (this.fullscreenAction == null) {
 			return;
 		}

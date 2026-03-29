@@ -12,13 +12,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 public class EarthTeleportScreen extends Screen {
 	private static final int DEFAULT_ZOOM = 6;
 
-	private final @Nullable Screen parent;
+	private final Screen parent;
 	private final double initialLatitude;
 	private final double initialLongitude;
 
@@ -26,7 +24,7 @@ public class EarthTeleportScreen extends Screen {
 	private MarkerMapComponent markerComponent;
 	private PlaceSearchWidget searchWidget;
 
-	public EarthTeleportScreen(@Nullable Screen parent, double latitude, double longitude) {
+	public EarthTeleportScreen(Screen parent, double latitude, double longitude) {
 		super(Component.translatable("gui.earth.teleport_map"));
 		this.parent = parent;
 		this.initialLatitude = latitude;
@@ -109,7 +107,7 @@ public class EarthTeleportScreen extends Screen {
 	}
 
 	@Override
-	public void render(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+	public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
 		graphics.fill(0, 0, this.width, this.height, 0xC0101010);
 		graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 0xFFFFFF);
 		super.render(graphics, mouseX, mouseY, delta);

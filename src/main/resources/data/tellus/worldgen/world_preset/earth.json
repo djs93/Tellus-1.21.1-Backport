@@ -1,7 +1,7 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "tellus:earth",
+      "type": "minecraft:overworld",
       "generator": {
         "type": "tellus:earth",
         "biome_source": {

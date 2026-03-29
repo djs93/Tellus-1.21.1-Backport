@@ -19,7 +19,7 @@ public class SlippyMap {
 		this.width = width;
 		this.height = height;
 
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 		this.camera = new Camera(new SlippyMapPoint(0.0, 0.0), width * scale, height * scale);
 	}
 
@@ -28,23 +28,23 @@ public class SlippyMap {
 	}
 
 	public void focus(double latitude, double longitude, int zoom) {
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 		SlippyMapPoint point = new SlippyMapPoint(latitude, longitude);
 		this.camera.focus(point.getX(zoom), point.getY(zoom), zoom, this.width * scale, this.height * scale);
 	}
 
 	public void zoom(int step, int pivotX, int pivotY) {
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 		this.camera.zoom(step, pivotX * scale, pivotY * scale);
 	}
 
 	public void drag(int deltaX, int deltaY) {
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 		this.camera.pan(deltaX * scale, deltaY * scale);
 	}
 
 	public List<SlippyMapTilePos> getVisibleTiles() {
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+		int scale = Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
 
 		int cameraX = this.camera.getX();
 		int cameraY = this.camera.getY();

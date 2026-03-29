@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.biome.Biome;
 
@@ -112,11 +112,11 @@ public final class BiomeClassification {
 	}
 
 	private static ResourceKey<Biome> toBiomeKey(String biomeId) {
-		Identifier id = biomeId.contains(":")
-				? Identifier.tryParse(biomeId)
-				: Identifier.fromNamespaceAndPath("minecraft", biomeId);
+		ResourceLocation id = biomeId.contains(":")
+				? ResourceLocation.tryParse(biomeId)
+				: ResourceLocation.fromNamespaceAndPath("minecraft", biomeId);
 		if (id == null) {
-			id = Identifier.fromNamespaceAndPath("minecraft", "plains");
+			id = ResourceLocation.fromNamespaceAndPath("minecraft", "plains");
 		}
 		return ResourceKey.create(Registries.BIOME, id);
 	}

@@ -15,7 +15,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.world.level.ChunkPos;
-import org.jspecify.annotations.NonNull;
 
 final class TellusWorldgenSources {
 	private static final TellusLandCoverSource LAND_COVER = new TellusLandCoverSource();
@@ -57,7 +56,7 @@ final class TellusWorldgenSources {
 		return LAND_MASK;
 	}
 
-	static @NonNull WaterSurfaceResolver waterResolver(EarthGeneratorSettings settings) {
+	static WaterSurfaceResolver waterResolver(EarthGeneratorSettings settings) {
 		Objects.requireNonNull(settings, "settings");
 		WaterSurfaceResolver resolver = WATER_RESOLVERS.computeIfAbsent(
 				settings,

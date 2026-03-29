@@ -40,11 +40,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.RegistryOps;
-import net.minecraft.server.permissions.Permission;
-import net.minecraft.server.permissions.PermissionLevel;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
@@ -54,14 +52,12 @@ import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.storage.LevelData;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.level.storage.WorldData;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.SharedConstants;
 import net.minecraft.util.Mth;
 
-import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,22 +71,22 @@ import java.util.Locale;
 import java.util.Optional;
 
 public class Tellus implements ModInitializer {
-	public static final @NonNull String MOD_ID = "tellus";
+	public static final String MOD_ID = "tellus";
 	private static final String DYNAMIC_DIMENSION_PACK_NAME = "tellus_dynamic_dimension";
 	private static final String DYNAMIC_DIMENSION_PACK_ID = "file/" + DYNAMIC_DIMENSION_PACK_NAME;
-	private static final @NonNull Identifier EARTH_DIMENSION_ID = Objects.requireNonNull(
-			Identifier.fromNamespaceAndPath(MOD_ID, "earth"),
+	private static final ResourceLocation EARTH_DIMENSION_ID = Objects.requireNonNull(
+			ResourceLocation.fromNamespaceAndPath(MOD_ID, "earth"),
 			"earthDimensionId"
 	);
-	private static final @NonNull Identifier DYNAMIC_DIMENSION_ID = Objects.requireNonNull(
-			Identifier.fromNamespaceAndPath(MOD_ID, "earth_dynamic"),
+	private static final ResourceLocation DYNAMIC_DIMENSION_ID = Objects.requireNonNull(
+			ResourceLocation.fromNamespaceAndPath(MOD_ID, "earth_dynamic"),
 			"dynamicDimensionId"
 	);
-	private static final @NonNull ResourceKey<DimensionType> EARTH_DIMENSION_KEY = Objects.requireNonNull(
+	private static final ResourceKey<DimensionType> EARTH_DIMENSION_KEY = Objects.requireNonNull(
 			ResourceKey.create(Registries.DIMENSION_TYPE, EARTH_DIMENSION_ID),
 			"earthDimensionKey"
 	);
-	private static final @NonNull ResourceKey<DimensionType> DYNAMIC_DIMENSION_KEY = Objects.requireNonNull(
+	private static final ResourceKey<DimensionType> DYNAMIC_DIMENSION_KEY = Objects.requireNonNull(
 			ResourceKey.create(Registries.DIMENSION_TYPE, DYNAMIC_DIMENSION_ID),
 			"dynamicDimensionKey"
 	);
@@ -103,8 +99,8 @@ public class Tellus implements ModInitializer {
 	// That way, it's clear which mod wrote info, warnings, and errors.
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-	public static @NonNull Identifier id(@NonNull String path) {
-		return Objects.requireNonNull(Identifier.fromNamespaceAndPath(MOD_ID, path), "identifier");
+	public static ResourceLocation id(String path) {
+		return Objects.requireNonNull(ResourceLocation.fromNamespaceAndPath(MOD_ID, path), "identifier");
 	}
 
 	@Override
@@ -127,14 +123,12 @@ public class Tellus implements ModInitializer {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
 			dispatcher.register(Commands.literal("tellus")
 					.then(Commands.literal("map")
-							.requires(source -> source.permissions()
-									.hasPermission(new Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS)))
+							.requires(source -> source.hasPermission(2))
 							.executes(context -> openGeoTpMap(context.getSource())))
 					.then(Commands.literal("weather")
 							.executes(context -> showTellusWeather(context.getSource())))
 						.then(Commands.literal("config")
-								.requires(source -> source.permissions()
-										.hasPermission(new Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS)))
+								.requires(source -> source.hasPermission(2))
 								.then(Commands.literal("weather")
 										.then(Commands.literal("enable_realtime_time")
 											.then(Commands.argument(
@@ -201,8 +195,8 @@ public class Tellus implements ModInitializer {
 				logOverworldSettings(server, world, generator);
 				if (generator instanceof EarthChunkGenerator earthGenerator) {
 					BlockPos spawn = Objects.requireNonNull(earthGenerator.getSpawnPosition(world), "spawnPosition");
-					world.setRespawnData(LevelData.RespawnData.of(world.dimension(), spawn, 0.0F, 0.0F));
-					ensureDynamicDimensionPack(server, world.dimensionTypeRegistration(), world.dimensionType(), earthGenerator);
+            		world.setDefaultSpawnPos(spawn, 0.0F);
+            		ensureDynamicDimensionPack(server, world.dimensionTypeRegistration(), world.dimensionType(), earthGenerator);
 				}
 			});
 		});
@@ -228,7 +222,7 @@ public class Tellus implements ModInitializer {
 			source.sendFailure(Component.literal("Tellus: GeoTP map can only be used by a player."));
 			return 0;
 		}
-		ServerLevel level = player.level();
+		ServerLevel level = (ServerLevel) player.level();
 		ChunkGenerator generator = level.getChunkSource().getGenerator();
 		if (!(generator instanceof EarthChunkGenerator earthGenerator)) {
 			source.sendFailure(Component.literal("Tellus: GeoTP map is only available in Tellus worlds."));
@@ -246,7 +240,7 @@ public class Tellus implements ModInitializer {
 			source.sendFailure(Component.literal("Tellus: /tellus weather can only be used by a player."));
 			return 0;
 		}
-		ServerLevel level = player.level();
+		ServerLevel level = (ServerLevel) player.level();
 		ChunkGenerator generator = level.getChunkSource().getGenerator();
 		if (!(generator instanceof EarthChunkGenerator earthGenerator)) {
 			source.sendFailure(Component.literal("Tellus: /tellus weather is only available in Tellus worlds."));
@@ -276,7 +270,7 @@ public class Tellus implements ModInitializer {
 		source.sendSuccess(() -> Component.literal("Location: ")
 				.withStyle(ChatFormatting.GRAY)
 				.append(Component.literal(locationText).withStyle(ChatFormatting.AQUA)), false);
-		@NonNull String gameTime = Objects.requireNonNull(formatGameTime(level), "gameTime");
+		String gameTime = Objects.requireNonNull(formatGameTime(level), "gameTime");
 		source.sendSuccess(() -> Component.literal("Game time: ")
 				.withStyle(ChatFormatting.GRAY)
 				.append(Component.literal(gameTime).withStyle(ChatFormatting.YELLOW)), false);
@@ -315,7 +309,7 @@ public class Tellus implements ModInitializer {
 		MutableComponent tempLine = Component.literal("Temperature: ")
 				.withStyle(ChatFormatting.GRAY);
 		if (snapshot != null) {
-			@NonNull String tempLabel = Objects.requireNonNull(
+			String tempLabel = Objects.requireNonNull(
 					String.format(Locale.ROOT, "%.1f C", snapshot.temperatureC()),
 					"tempLabel"
 			);
@@ -453,13 +447,13 @@ public class Tellus implements ModInitializer {
 		};
 	}
 
-	private static WeatherDisplay weatherFromVanilla(ServerLevel level, @NonNull BlockPos pos) {
+	private static WeatherDisplay weatherFromVanilla(ServerLevel level, BlockPos pos) {
 		if (level.isThundering()) {
 			return new WeatherDisplay("Thunder", ChatFormatting.DARK_PURPLE);
 		}
 		if (level.isRainingAt(pos)) {
 			var biome = level.getBiome(pos).value();
-			boolean snow = biome.getPrecipitationAt(pos, level.getSeaLevel()) == net.minecraft.world.level.biome.Biome.Precipitation.SNOW;
+			boolean snow = biome.getPrecipitationAt(pos) == net.minecraft.world.level.biome.Biome.Precipitation.SNOW;
 			return new WeatherDisplay(snow ? "Snow" : "Rain", snow ? ChatFormatting.AQUA : ChatFormatting.BLUE);
 		}
 		return new WeatherDisplay("Clear", ChatFormatting.GREEN);
@@ -511,7 +505,7 @@ public class Tellus implements ModInitializer {
 			return;
 		}
 		ServerPlayer player = context.player();
-		ServerLevel level = player.level();
+		ServerLevel level = (ServerLevel) player.level();
 		ChunkGenerator generator = level.getChunkSource().getGenerator();
 		if (!(generator instanceof EarthChunkGenerator earthGenerator)) {
 			player.sendSystemMessage(Component.literal("Tellus: GeoTP is only available in Tellus worlds."));
@@ -556,13 +550,12 @@ public class Tellus implements ModInitializer {
 				generator.getMinY(),
 				generator.getGenDepth()
 		);
-		Registry<LevelStem> stems = server.registryAccess().lookupOrThrow(Registries.LEVEL_STEM);
-		Optional<Holder.Reference<LevelStem>> stemRef = stems.get(LevelStem.OVERWORLD);
-		if (stemRef.isEmpty()) {
+		Registry<LevelStem> stems = server.registryAccess().registryOrThrow(Registries.LEVEL_STEM);
+		LevelStem stem = stems.get(LevelStem.OVERWORLD);
+		if (stem == null) {
 			LOGGER.warn("Overworld level stem missing from registry");
 			return;
 		}
-		LevelStem stem = stemRef.get().value();
 		DimensionType stemType = stem.type().value();
 		LOGGER.info(
 				"Overworld level stem: dimensionType={}, generatorType={}",
@@ -600,7 +593,7 @@ public class Tellus implements ModInitializer {
 
 		Path packDir = server.getWorldPath(LevelResource.DATAPACK_DIR).resolve(DYNAMIC_DIMENSION_PACK_NAME);
 		Path packMetaPath = packDir.resolve("pack.mcmeta");
-		Identifier dimensionId = dimensionKey.identifier();
+		ResourceLocation dimensionId = dimensionKey.location();
 		Path dimensionPath = packDir.resolve(
 				"data/" + dimensionId.getNamespace() + "/dimension_type/" + dimensionId.getPath() + ".json"
 		);
@@ -628,7 +621,7 @@ public class Tellus implements ModInitializer {
 
 	private static JsonObject createPackMeta() {
 		JsonObject pack = new JsonObject();
-		int packFormat = SharedConstants.getCurrentVersion().packVersion(PackType.SERVER_DATA).major();
+		int packFormat = SharedConstants.getCurrentVersion().getPackVersion(PackType.SERVER_DATA);
 		pack.addProperty("pack_format", packFormat);
 		pack.addProperty("description", "Tellus dynamic dimension settings");
 		JsonObject root = new JsonObject();

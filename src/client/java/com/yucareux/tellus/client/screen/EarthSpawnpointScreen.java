@@ -10,7 +10,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
 
 public class EarthSpawnpointScreen extends Screen {
 	private final EarthCustomizeScreen parent;
@@ -78,7 +77,7 @@ public class EarthSpawnpointScreen extends Screen {
 	}
 
 	@Override
-	public void render(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+	public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
 		graphics.fill(0, 0, this.width, this.height, 0xC0101010);
 		graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 0xFFFFFF);
 		super.render(graphics, mouseX, mouseY, delta);

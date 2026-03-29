@@ -20,8 +20,6 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 public final class EarthBiomeSource extends BiomeSource {
 	public static final MapCodec<EarthBiomeSource> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
@@ -47,18 +45,18 @@ public final class EarthBiomeSource extends BiomeSource {
 	private static final TellusLandCoverSource LAND_COVER_SOURCE = TellusWorldgenSources.landCover();
 	private static final TellusKoppenSource KOPPEN_SOURCE = TellusWorldgenSources.koppen();
 
-	private final @NonNull HolderGetter<Biome> biomeLookup;
-	private final @NonNull EarthGeneratorSettings settings;
-	private final @NonNull Set<Holder<Biome>> possibleBiomes;
-	private final @NonNull Holder<Biome> plains;
-	private final @NonNull Holder<Biome> ocean;
-	private final @NonNull Holder<Biome> river;
-	private final @NonNull Holder<Biome> frozenPeaks;
-	private final @NonNull Holder<Biome> mangrove;
-	private final @Nullable Holder<Biome> lushCaves;
-	private final @Nullable Holder<Biome> dripstoneCaves;
-	private final @Nullable Holder<Biome> deepDark;
-	private final @NonNull WaterSurfaceResolver waterResolver;
+	private final HolderGetter<Biome> biomeLookup;
+	private final EarthGeneratorSettings settings;
+	private final Set<Holder<Biome>> possibleBiomes;
+	private final Holder<Biome> plains;
+	private final Holder<Biome> ocean;
+	private final Holder<Biome> river;
+	private final Holder<Biome> frozenPeaks;
+	private final Holder<Biome> mangrove;
+	private final Holder<Biome> lushCaves;
+	private final Holder<Biome> dripstoneCaves;
+	private final Holder<Biome> deepDark;
+	private final WaterSurfaceResolver waterResolver;
 	private final int deepDarkCeiling;
 	private volatile boolean fastSpawnMode = true;
 
@@ -87,28 +85,28 @@ public final class EarthBiomeSource extends BiomeSource {
 	}
 
 	@Override
-	protected @NonNull Stream<Holder<Biome>> collectPossibleBiomes() {
+	protected Stream<Holder<Biome>> collectPossibleBiomes() {
 		return Objects.requireNonNull(this.possibleBiomes.stream(), "possibleBiomes.stream()");
 	}
 
 	@Override
-	protected @NonNull MapCodec<? extends BiomeSource> codec() {
+	protected MapCodec<? extends BiomeSource> codec() {
 		return Objects.requireNonNull(CODEC, "CODEC");
 	}
 
 	@Override
-	public @NonNull Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.@NonNull Sampler sampler) {
+	public Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.Sampler sampler) {
 		int blockX = QuartPos.toBlock(x);
 		int blockY = QuartPos.toBlock(y);
 		int blockZ = QuartPos.toBlock(z);
 		return resolveBiomeAtBlock(blockX, blockY, blockZ);
 	}
 
-	public @NonNull Holder<Biome> getBiomeAtBlock(int blockX, int blockZ) {
+	public Holder<Biome> getBiomeAtBlock(int blockX, int blockZ) {
 		return resolveSurfaceBiomeAtBlock(blockX, blockZ);
 	}
 
-	private @NonNull Holder<Biome> resolveSurfaceBiomeAtBlock(int blockX, int blockZ) {
+	private Holder<Biome> resolveSurfaceBiomeAtBlock(int blockX, int blockZ) {
 		if (this.fastSpawnMode) {
 			return resolveFastSpawnSurfaceBiome(blockX, blockZ);
 		}
@@ -116,7 +114,7 @@ public final class EarthBiomeSource extends BiomeSource {
 		return resolveSurfaceBiomeAtBlock(blockX, blockZ, coverClass, null);
 	}
 
-	private @NonNull Holder<Biome> resolveBiomeAtBlock(int blockX, int blockY, int blockZ) {
+	private Holder<Biome> resolveBiomeAtBlock(int blockX, int blockY, int blockZ) {
 		if (this.fastSpawnMode) {
 			return resolveFastSpawnSurfaceBiome(blockX, blockZ);
 		}
@@ -134,7 +132,7 @@ public final class EarthBiomeSource extends BiomeSource {
 		return resolveCaveBiome(surfaceBiome, blockX, blockY, blockZ, depth);
 	}
 
-	private @NonNull Holder<Biome> resolveFastSpawnSurfaceBiome(int blockX, int blockZ) {
+	private Holder<Biome> resolveFastSpawnSurfaceBiome(int blockX, int blockZ) {
 		int coverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
 		if (coverClass == ESA_SNOW_ICE) {
 			return this.frozenPeaks;
@@ -151,11 +149,11 @@ public final class EarthBiomeSource extends BiomeSource {
 		return this.plains;
 	}
 
-	private @NonNull Holder<Biome> resolveSurfaceBiomeAtBlock(
+	private Holder<Biome> resolveSurfaceBiomeAtBlock(
 			int blockX,
 			int blockZ,
 			int coverClass,
-			WaterSurfaceResolver.@Nullable WaterColumnData column
+			WaterSurfaceResolver.WaterColumnData column
 	) {
 
 		if (coverClass == ESA_SNOW_ICE) {
@@ -190,7 +188,7 @@ public final class EarthBiomeSource extends BiomeSource {
 		return resolveBiome(biomeKey, this.plains);
 	}
 
-	private @NonNull Set<Holder<Biome>> buildPossibleBiomes() {
+	private Set<Holder<Biome>> buildPossibleBiomes() {
 		Set<Holder<Biome>> holders = new HashSet<>();
 		for (ResourceKey<Biome> key : BiomeClassification.allBiomeKeys()) {
 			holders.add(resolveBiome(key, this.plains));
@@ -210,8 +208,8 @@ public final class EarthBiomeSource extends BiomeSource {
 		return holders;
 	}
 
-	private @NonNull Holder<Biome> resolveCaveBiome(
-			@NonNull Holder<Biome> surfaceBiome,
+	private Holder<Biome> resolveCaveBiome(
+			Holder<Biome> surfaceBiome,
 			int blockX,
 			int blockY,
 			int blockZ,
@@ -301,13 +299,13 @@ public final class EarthBiomeSource extends BiomeSource {
 		return (double) (seed >>> 11) * 0x1.0p-53;
 	}
 
-	private static void addIfPresent(Set<Holder<Biome>> holders, @Nullable Holder<Biome> biome) {
+	private static void addIfPresent(Set<Holder<Biome>> holders, Holder<Biome> biome) {
 		if (biome != null) {
 			holders.add(biome);
 		}
 	}
 
-	private @NonNull Holder<Biome> resolveBiome(@Nullable ResourceKey<Biome> key, @NonNull Holder<Biome> fallback) {
+	private Holder<Biome> resolveBiome(ResourceKey<Biome> key, Holder<Biome> fallback) {
 		if (key == null) {
 			return fallback;
 		}
@@ -315,7 +313,7 @@ public final class EarthBiomeSource extends BiomeSource {
 		return Objects.requireNonNull(resolved, "resolvedBiome");
 	}
 
-	private @Nullable Holder<Biome> resolveOptionalBiome(@Nullable ResourceKey<Biome> key) {
+	private Holder<Biome> resolveOptionalBiome(ResourceKey<Biome> key) {
 		if (key == null) {
 			return null;
 		}

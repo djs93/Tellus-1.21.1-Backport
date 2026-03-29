@@ -229,7 +229,7 @@ public final class TellusLandCoverSource {
 		return new TileKey(tileLat, tileLon);
 	}
 
-	private void prefetchTile(@org.jspecify.annotations.NonNull TileKey key) {
+	private void prefetchTile(TileKey key) {
 		if (this.cache.getIfPresent(key) != null) {
 			return;
 		}

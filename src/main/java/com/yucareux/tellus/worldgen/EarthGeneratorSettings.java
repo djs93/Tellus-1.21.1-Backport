@@ -1349,20 +1349,21 @@ public record EarthGeneratorSettings(
 
 	public static DimensionType applyHeightLimits(DimensionType base, HeightLimits limits) {
 		return new DimensionType(
-				base.hasFixedTime(),
+				base.fixedTime(),
 				base.hasSkyLight(),
 				base.hasCeiling(),
+				base.ultraWarm(),
+				base.natural(),
 				base.coordinateScale(),
+				base.bedWorks(),
+				base.respawnAnchorWorks(),
 				limits.minY(),
 				limits.height(),
 				limits.logicalHeight(),
 				base.infiniburn(),
+				base.effectsLocation(),
 				base.ambientLight(),
-				base.monsterSettings(),
-				base.skybox(),
-				base.cardinalLightType(),
-				base.attributes(),
-				base.timelines()
+				base.monsterSettings()
 		);
 	}
 

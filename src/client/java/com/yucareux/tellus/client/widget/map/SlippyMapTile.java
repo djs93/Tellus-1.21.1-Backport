@@ -2,11 +2,10 @@ package com.yucareux.tellus.client.widget.map;
 
 import com.yucareux.tellus.Tellus;
 import com.mojang.blaze3d.platform.NativeImage;
-import java.util.Locale;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
 public class SlippyMapTile {
@@ -15,7 +14,7 @@ public class SlippyMapTile {
 
 	private float transition;
 	private NativeImage image;
-	private Identifier location;
+	private ResourceLocation location;
 	private DynamicTexture texture;
 
 	public SlippyMapTile(SlippyMapTilePos pos) {
@@ -37,7 +36,7 @@ public class SlippyMapTile {
 		}
 	}
 
-	public Identifier getLocation() {
+	public ResourceLocation getLocation() {
 		if (this.location == null && this.image != null) {
 			this.location = this.uploadImage();
 		}
@@ -65,18 +64,18 @@ public class SlippyMapTile {
 		}
 	}
 
-	private Identifier uploadImage() {
+	private ResourceLocation uploadImage() {
 		synchronized (this.lock) {
 			NativeImage image = Objects.requireNonNull(this.image, "tileImage");
 			this.image = null;
 
 			DynamicTexture texture = Objects.requireNonNull(
-					new DynamicTexture(() -> String.format(Locale.ROOT, "tellus_map_%s", this.pos), image),
+					new DynamicTexture(image),
 					"tileTexture"
 			);
 			this.texture = texture;
 			texture.upload();
-			Identifier id = Objects.requireNonNull(Tellus.id("map_" + this.pos), "tileId");
+			ResourceLocation id = Objects.requireNonNull(Tellus.id("map_" + this.pos), "tileId");
 			Minecraft.getInstance().getTextureManager().register(id, texture);
 			return id;
 		}

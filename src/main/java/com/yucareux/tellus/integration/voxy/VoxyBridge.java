@@ -13,7 +13,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.chunk.LevelChunk;
-import org.jspecify.annotations.Nullable;
 
 final class VoxyBridge {
 	private static final String VOXY_MOD_ID = "voxy";
@@ -32,7 +31,7 @@ final class VoxyBridge {
 
 	private static final Object INGEST_LOCK = new Object();
 	private static final AtomicBoolean LOGGED_INGEST_ERROR = new AtomicBoolean(false);
-	private static volatile @Nullable Method ingestMethod;
+	private static volatile Method ingestMethod;
 	private static volatile boolean ingestMethodResolved;
 
 	private VoxyBridge() {
@@ -131,7 +130,7 @@ final class VoxyBridge {
 		}
 	}
 
-	private static @Nullable Method resolveIngestMethod() {
+	private static Method resolveIngestMethod() {
 		if (ingestMethodResolved) {
 			return ingestMethod;
 		}

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Biome.class)
 public class BiomePrecipitationMixin {
     @Inject(method = "getPrecipitationAt", at = @At("HEAD"), cancellable = true)
-    private void tellus$overridePrecipitation(BlockPos pos, int seaLevel, CallbackInfoReturnable<Biome.Precipitation> cir) {
+    private void tellus$overridePrecipitation(BlockPos pos, CallbackInfoReturnable<Biome.Precipitation> cir) {
         Biome.Precipitation override = TellusRealtimeState.precipitationOverride();
         if (override != null) {
             cir.setReturnValue(override);

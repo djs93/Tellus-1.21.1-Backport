@@ -43,7 +43,7 @@ public final class TellusNoiseSettingsAdapter {
 
 	@SuppressWarnings("deprecation")
 	private static boolean readDisableMobGeneration(NoiseGeneratorSettings settings) {
-		// 1.21.11 still exposes this flag via a deprecated accessor with no replacement.
+		// 1.21.1 still exposes this flag via a deprecated accessor with no replacement.
 		return settings.disableMobGeneration();
 	}
 }

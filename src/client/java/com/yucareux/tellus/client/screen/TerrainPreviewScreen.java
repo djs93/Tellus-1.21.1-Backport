@@ -7,19 +7,18 @@ import java.util.Objects;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
 
 public class TerrainPreviewScreen extends Screen {
-	private final @NonNull EarthCustomizeScreen parent;
-	private final @NonNull TerrainPreview preview;
-	private final @NonNull ViewState initialView;
+	private final EarthCustomizeScreen parent;
+	private final TerrainPreview preview;
+	private final ViewState initialView;
 
 	private TerrainPreviewWidget previewWidget;
 
 	public TerrainPreviewScreen(
-			@NonNull EarthCustomizeScreen parent,
-			@NonNull TerrainPreview preview,
-			@NonNull ViewState initialView
+			EarthCustomizeScreen parent,
+			TerrainPreview preview,
+			ViewState initialView
 	) {
 		super(Component.empty());
 		this.parent = Objects.requireNonNull(parent, "parent");

@@ -22,7 +22,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import org.jspecify.annotations.Nullable;
 
 public final class TellusVoxyPregenManager {
 	private static final long TICK_NANOS = 50_000_000L;
@@ -47,9 +46,9 @@ public final class TellusVoxyPregenManager {
 	private final Map<UUID, PlayerPregenState> playerStates = new HashMap<>();
 	private final Set<Long> inFlight = ConcurrentHashMap.newKeySet();
 
-	private volatile @Nullable Boolean enabledOverride;
-	private volatile @Nullable Integer maxRadiusOverride;
-	private volatile @Nullable Integer chunksPerTickOverride;
+	private volatile Boolean enabledOverride;
+	private volatile Integer maxRadiusOverride;
+	private volatile Integer chunksPerTickOverride;
 
 	private volatile int lastConfiguredVoxyRadiusChunks;
 	private volatile int lastEffectiveRadiusChunks;
@@ -125,15 +124,15 @@ public final class TellusVoxyPregenManager {
 		chunksPerTickOverride = null;
 	}
 
-	public void setEnabledOverride(@Nullable Boolean enabled) {
+	public void setEnabledOverride(Boolean enabled) {
 		enabledOverride = enabled;
 	}
 
-	public void setMaxRadiusOverride(@Nullable Integer maxRadius) {
+	public void setMaxRadiusOverride(Integer maxRadius) {
 		maxRadiusOverride = maxRadius;
 	}
 
-	public void setChunksPerTickOverride(@Nullable Integer chunksPerTick) {
+	public void setChunksPerTickOverride(Integer chunksPerTick) {
 		chunksPerTickOverride = chunksPerTick;
 	}
 
@@ -152,15 +151,15 @@ public final class TellusVoxyPregenManager {
 		return Math.max(1, override != null ? override.intValue() : settings.voxyChunkPregenChunksPerTick());
 	}
 
-	public @Nullable Boolean enabledOverride() {
+	public Boolean enabledOverride() {
 		return enabledOverride;
 	}
 
-	public @Nullable Integer maxRadiusOverride() {
+	public Integer maxRadiusOverride() {
 		return maxRadiusOverride;
 	}
 
-	public @Nullable Integer chunksPerTickOverride() {
+	public Integer chunksPerTickOverride() {
 		return chunksPerTickOverride;
 	}
 
@@ -492,7 +491,7 @@ public final class TellusVoxyPregenManager {
 		return base;
 	}
 
-	private @Nullable Long pollNextChunk() {
+	private Long pollNextChunk() {
 		while (!priorityQueue.isEmpty()) {
 			long key = priorityQueue.dequeueLong();
 			priorityQueued.remove(key);

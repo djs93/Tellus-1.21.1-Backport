@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.zip.GZIPInputStream;
-import org.jspecify.annotations.Nullable;
 
 final class PmTilesReader {
 	private static final int HEADER_SIZE = 127;
@@ -27,8 +26,8 @@ final class PmTilesReader {
 
 	private final String url;
 	private final LoadingCache<DirectoryKey, Directory> directoryCache;
-	private @Nullable PmTilesHeader header;
-	private @Nullable Directory rootDirectory;
+	private PmTilesHeader header;
+	private Directory rootDirectory;
 
 	PmTilesReader(String url) {
 		this.url = Objects.requireNonNull(url, "url");
@@ -49,7 +48,7 @@ final class PmTilesReader {
 		return this.header;
 	}
 
-	byte @Nullable [] getTileBytes(int z, int x, int y) throws IOException {
+	byte [] getTileBytes(int z, int x, int y) throws IOException {
 		long tileId = zxyToTileId(z, x, y);
 		PmTilesHeader header = header();
 		Directory directory = getRootDirectory();
