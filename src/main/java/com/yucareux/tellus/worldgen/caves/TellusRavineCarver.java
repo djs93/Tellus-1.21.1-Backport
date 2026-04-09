@@ -5,13 +5,13 @@ import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import net.minecraft.world.level.levelgen.carver.WorldCarver;
 
 public final class TellusRavineCarver {
-	private final ConfiguredWorldCarver<CanyonCarverConfiguration> configured;
+   private final ConfiguredWorldCarver<CanyonCarverConfiguration> configured;
 
-	public TellusRavineCarver(CanyonCarverConfiguration configuration) {
-		this.configured = WorldCarver.CANYON.configured(configuration);
-	}
+   public TellusRavineCarver(CanyonCarverConfiguration configuration) {
+      this.configured = WorldCarver.CANYON.configured(configuration);
+   }
 
-	ConfiguredWorldCarver<CanyonCarverConfiguration> configured() {
-		return this.configured;
-	}
+   ConfiguredWorldCarver<CanyonCarverConfiguration> configured() {
+      return this.configured;
+   }
 }

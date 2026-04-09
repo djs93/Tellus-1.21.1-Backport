@@ -3,10 +3,10 @@ package com.yucareux.tellus.world.data.source;
 import java.io.IOException;
 
 public interface Geocoder {
-	record Suggestion(String displayName, double latitude, double longitude) {
-	}
+   double[] get(String var1) throws IOException;
 
-	double[] get(String place) throws IOException;
+   Geocoder.Suggestion[] suggest(String var1) throws IOException;
 
-	Suggestion[] suggest(String place) throws IOException;
+   public record Suggestion(String displayName, double latitude, double longitude) {
+   }
 }

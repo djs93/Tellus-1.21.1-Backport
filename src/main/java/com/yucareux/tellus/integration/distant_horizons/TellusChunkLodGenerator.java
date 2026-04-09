@@ -9,33 +9,28 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
 
 public final class TellusChunkLodGenerator extends AbstractDhApiChunkWorldGenerator {
-	private final ServerLevel level;
+   private final ServerLevel level;
 
-	public TellusChunkLodGenerator(ServerLevel level) {
-		this.level = Objects.requireNonNull(level, "level");
-	}
+   public TellusChunkLodGenerator(ServerLevel level) {
+      this.level = Objects.requireNonNull(level, "level");
+   }
 
-	@Override
-	public EDhApiWorldGeneratorReturnType getReturnType() {
-		return EDhApiWorldGeneratorReturnType.VANILLA_CHUNKS;
-	}
+   public EDhApiWorldGeneratorReturnType getReturnType() {
+      return EDhApiWorldGeneratorReturnType.VANILLA_CHUNKS;
+   }
 
-	@Override
-	public Object[] generateChunk(int chunkPosX, int chunkPosZ, EDhApiDistantGeneratorMode generatorMode) {
-		LevelChunk chunk = level.getChunk(chunkPosX, chunkPosZ);
-		return new Object[]{chunk, level};
-	}
+   public Object[] generateChunk(int chunkPosX, int chunkPosZ, EDhApiDistantGeneratorMode generatorMode) {
+      LevelChunk chunk = this.level.getChunk(chunkPosX, chunkPosZ);
+      return new Object[]{chunk, this.level};
+   }
 
-	@Override
-	public DhApiChunk generateApiChunk(int chunkPosX, int chunkPosZ, EDhApiDistantGeneratorMode generatorMode) {
-		throw new UnsupportedOperationException("TellusChunkLodGenerator uses vanilla chunks");
-	}
+   public DhApiChunk generateApiChunk(int chunkPosX, int chunkPosZ, EDhApiDistantGeneratorMode generatorMode) {
+      throw new UnsupportedOperationException("TellusChunkLodGenerator uses vanilla chunks");
+   }
 
-	@Override
-	public void preGeneratorTaskStart() {
-	}
+   public void preGeneratorTaskStart() {
+   }
 
-	@Override
-	public void close() {
-	}
+   public void close() {
+   }
 }

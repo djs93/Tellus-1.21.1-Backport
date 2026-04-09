@@ -6,106 +6,99 @@ import com.yucareux.tellus.client.widget.map.SlippyMapWidget;
 import com.yucareux.tellus.client.widget.map.component.MarkerMapComponent;
 import com.yucareux.tellus.world.data.source.Geocoder;
 import com.yucareux.tellus.world.data.source.NominatimGeocoder;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
 
+@Environment(EnvType.CLIENT)
 public class EarthSpawnpointScreen extends Screen {
-	private final EarthCustomizeScreen parent;
+   private final EarthCustomizeScreen parent;
+   private SlippyMapWidget mapWidget;
+   private MarkerMapComponent markerComponent;
+   private PlaceSearchWidget searchWidget;
 
-	private SlippyMapWidget mapWidget;
-	private MarkerMapComponent markerComponent;
-	private PlaceSearchWidget searchWidget;
+   public EarthSpawnpointScreen(EarthCustomizeScreen parent) {
+      super(Component.translatable("gui.earth.spawnpoint"));
+      this.parent = parent;
+   }
 
-	public EarthSpawnpointScreen(EarthCustomizeScreen parent) {
-		super(Component.translatable("gui.earth.spawnpoint"));
-		this.parent = parent;
-	}
+   protected void init() {
+      if (this.mapWidget != null) {
+         this.mapWidget.close();
+      }
 
-	@Override
-	protected void init() {
-		if (this.mapWidget != null) {
-			this.mapWidget.close();
-		}
+      int mapX = 0;
+      int mapY = 0;
+      int mapWidth = this.width;
+      int mapHeight = this.height;
+      this.mapWidget = new SlippyMapWidget(mapX, mapY, mapWidth, mapHeight);
+      this.mapWidget.setAttributionBottomPadding(28);
+      double latitude = this.parent.getSpawnLatitude();
+      double longitude = this.parent.getSpawnLongitude();
+      this.markerComponent = new MarkerMapComponent(new SlippyMapPoint(latitude, longitude)).allowMovement();
+      this.mapWidget.addComponent(this.markerComponent);
+      this.mapWidget.getMap().focus(latitude, longitude, 4);
+      Geocoder geocoder = new NominatimGeocoder();
+      this.searchWidget = new PlaceSearchWidget(mapX + 12, mapY + 12, 220, 20, geocoder, this::handleSearch);
+      this.addRenderableOnly(this.mapWidget);
+      this.addRenderableWidget(this.searchWidget);
+      int buttonY = this.height - 28;
+      this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> {
+         SlippyMapPoint marker = this.markerComponent.getMarker();
+         if (marker != null) {
+            this.parent.applySpawnpoint(marker.getLatitude(), marker.getLongitude());
+         }
 
-		int mapX = 0;
-		int mapY = 0;
-		int mapWidth = this.width;
-		int mapHeight = this.height;
-		this.mapWidget = new SlippyMapWidget(mapX, mapY, mapWidth, mapHeight);
-		this.mapWidget.setAttributionBottomPadding(28);
+         this.minecraft.setScreen(this.parent);
+      }).bounds(this.width / 2 - 154, buttonY, 150, 20).build());
+      this.addRenderableWidget(
+         Button.builder(Component.translatable("gui.cancel"), button -> this.minecraft.setScreen(this.parent))
+            .bounds(this.width / 2 + 4, buttonY, 150, 20)
+            .build()
+      );
+      this.addWidget(this.mapWidget);
+   }
 
-		double latitude = this.parent.getSpawnLatitude();
-		double longitude = this.parent.getSpawnLongitude();
-		this.markerComponent = new MarkerMapComponent(new SlippyMapPoint(latitude, longitude)).allowMovement();
-		this.mapWidget.addComponent(this.markerComponent);
-		this.mapWidget.getMap().focus(latitude, longitude, 4);
+   protected void setInitialFocus() {
+      if (this.searchWidget != null) {
+         this.setInitialFocus(this.searchWidget);
+      }
+   }
 
-		Geocoder geocoder = new NominatimGeocoder();
-		this.searchWidget = new PlaceSearchWidget(mapX + 12, mapY + 12, 220, 20, geocoder, this::handleSearch);
+   private void handleSearch(double latitude, double longitude) {
+      this.markerComponent.moveMarker(latitude, longitude);
+      this.mapWidget.getMap().focus(latitude, longitude, 12);
+   }
 
-		this.addRenderableOnly(this.mapWidget);
-		this.addRenderableWidget(this.searchWidget);
+   public void render( GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+      graphics.fill(0, 0, this.width, this.height, -1072689136);
+      graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 16777215);
+      super.render(graphics, mouseX, mouseY, delta);
+   }
 
-		int buttonY = this.height - 28;
-		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> {
-			SlippyMapPoint marker = this.markerComponent.getMarker();
-			if (marker != null) {
-				this.parent.applySpawnpoint(marker.getLatitude(), marker.getLongitude());
-			}
-			this.minecraft.setScreen(this.parent);
-		}).bounds(this.width / 2 - 154, buttonY, 150, 20).build());
+   public void tick() {
+      super.tick();
+      if (this.searchWidget != null) {
+         this.searchWidget.tick();
+      }
+   }
 
-		this.addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> {
-			this.minecraft.setScreen(this.parent);
-		}).bounds(this.width / 2 + 4, buttonY, 150, 20).build());
+   public void onClose() {
+      if (this.minecraft != null) {
+         this.minecraft.setScreen(this.parent);
+      }
+   }
 
-		this.addWidget(this.mapWidget);
-	}
+   public void removed() {
+      if (this.mapWidget != null) {
+         this.mapWidget.close();
+      }
 
-	@Override
-	protected void setInitialFocus() {
-		if (this.searchWidget != null) {
-			this.setInitialFocus(this.searchWidget);
-		}
-	}
-
-	private void handleSearch(double latitude, double longitude) {
-		this.markerComponent.moveMarker(latitude, longitude);
-		this.mapWidget.getMap().focus(latitude, longitude, 12);
-	}
-
-	@Override
-	public void render(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, this.width, this.height, 0xC0101010);
-		graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 0xFFFFFF);
-		super.render(graphics, mouseX, mouseY, delta);
-	}
-
-	@Override
-	public void tick() {
-		super.tick();
-		if (this.searchWidget != null) {
-			this.searchWidget.tick();
-		}
-	}
-
-	@Override
-	public void onClose() {
-		if (this.minecraft != null) {
-			this.minecraft.setScreen(this.parent);
-		}
-	}
-
-	@Override
-	public void removed() {
-		if (this.mapWidget != null) {
-			this.mapWidget.close();
-		}
-		if (this.searchWidget != null) {
-			this.searchWidget.close();
-		}
-	}
+      if (this.searchWidget != null) {
+         this.searchWidget.close();
+      }
+   }
 }

@@ -3,9 +3,9 @@
 	"package": "com.yucareux.tellus.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"ExampleClientMixin",
 		"GuiGraphicsAccessor",
 		"LevelLoadingScreenMixin",
+		"MinecraftScreenMixin",
 		"PresetEditorMixin"
 	],
 	"injectors": {

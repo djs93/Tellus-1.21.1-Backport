@@ -7,134 +7,118 @@ import com.yucareux.tellus.client.widget.map.component.MarkerMapComponent;
 import com.yucareux.tellus.network.GeoTpTeleportPayload;
 import com.yucareux.tellus.world.data.source.Geocoder;
 import com.yucareux.tellus.world.data.source.NominatimGeocoder;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
+@Environment(EnvType.CLIENT)
 public class EarthTeleportScreen extends Screen {
-	private static final int DEFAULT_ZOOM = 6;
+   private static final int DEFAULT_ZOOM = 6;
+   
+   private final Screen parent;
+   private final double initialLatitude;
+   private final double initialLongitude;
+   private SlippyMapWidget mapWidget;
+   private MarkerMapComponent markerComponent;
+   private PlaceSearchWidget searchWidget;
 
-	private final @Nullable Screen parent;
-	private final double initialLatitude;
-	private final double initialLongitude;
+   public EarthTeleportScreen( Screen parent, double latitude, double longitude) {
+      super(Component.translatable("gui.earth.teleport_map"));
+      this.parent = parent;
+      this.initialLatitude = latitude;
+      this.initialLongitude = longitude;
+   }
 
-	private SlippyMapWidget mapWidget;
-	private MarkerMapComponent markerComponent;
-	private PlaceSearchWidget searchWidget;
+   protected void init() {
+      if (this.mapWidget != null) {
+         this.mapWidget.close();
+      }
 
-	public EarthTeleportScreen(@Nullable Screen parent, double latitude, double longitude) {
-		super(Component.translatable("gui.earth.teleport_map"));
-		this.parent = parent;
-		this.initialLatitude = latitude;
-		this.initialLongitude = longitude;
-	}
+      int mapX = 20;
+      int mapY = 20;
+      int mapWidth = this.width - 40;
+      int mapHeight = this.height - 60;
+      this.mapWidget = new SlippyMapWidget(mapX, mapY, mapWidth, mapHeight);
+      this.markerComponent = new MarkerMapComponent(new SlippyMapPoint(this.initialLatitude, this.initialLongitude)).allowMovement();
+      this.mapWidget.addComponent(this.markerComponent);
+      this.mapWidget.getMap().focus(this.initialLatitude, this.initialLongitude, DEFAULT_ZOOM);
+      Geocoder geocoder = new NominatimGeocoder();
+      this.searchWidget = new PlaceSearchWidget(mapX + 5, mapY + 5, 200, 20, geocoder, this::handleSearch);
+      this.addRenderableOnly(this.mapWidget);
+      this.addRenderableWidget(this.searchWidget);
+      int buttonY = this.height - 28;
+      this.addRenderableWidget(
+         Button.builder(Component.translatable("gui.earth.teleport"), button -> this.sendTeleport()).bounds(this.width / 2 - 154, buttonY, 150, 20).build()
+      );
+      this.addRenderableWidget(
+         Button.builder(Component.translatable("gui.cancel"), button -> this.closeScreen()).bounds(this.width / 2 + 4, buttonY, 150, 20).build()
+      );
+      this.addWidget(this.mapWidget);
+   }
 
-	@Override
-	protected void init() {
-		if (this.mapWidget != null) {
-			this.mapWidget.close();
-		}
+   protected void setInitialFocus() {
+      if (this.searchWidget != null) {
+         this.setInitialFocus(this.searchWidget);
+      }
+   }
 
-		int mapX = 20;
-		int mapY = 20;
-		int mapWidth = this.width - 40;
-		int mapHeight = this.height - 60;
-		this.mapWidget = new SlippyMapWidget(mapX, mapY, mapWidth, mapHeight);
+   private void handleSearch(double latitude, double longitude) {
+      this.markerComponent.moveMarker(latitude, longitude);
+      this.mapWidget.getMap().focus(latitude, longitude, 12);
+   }
 
-		this.markerComponent = new MarkerMapComponent(new SlippyMapPoint(this.initialLatitude, this.initialLongitude))
-				.allowMovement();
-		this.mapWidget.addComponent(this.markerComponent);
-		this.mapWidget.getMap().focus(this.initialLatitude, this.initialLongitude, DEFAULT_ZOOM);
+   private void sendTeleport() {
+      if (this.markerComponent != null) {
+         SlippyMapPoint marker = this.markerComponent.getMarker();
+         if (marker != null && this.minecraft != null) {
+            if (!ClientPlayNetworking.canSend(GeoTpTeleportPayload.TYPE)) {
+               if (this.minecraft.player != null) {
+                  this.minecraft.player.displayClientMessage(Component.literal("Tellus: Server does not accept GeoTP requests."), true);
+               }
 
-		Geocoder geocoder = new NominatimGeocoder();
-		this.searchWidget = new PlaceSearchWidget(mapX + 5, mapY + 5, 200, 20, geocoder, this::handleSearch);
+               this.closeScreen();
+            } else {
+               ClientPlayNetworking.send(new GeoTpTeleportPayload(marker.getLatitude(), marker.getLongitude()));
+               this.closeScreen();
+            }
+         }
+      }
+   }
 
-		this.addRenderableOnly(this.mapWidget);
-		this.addRenderableWidget(this.searchWidget);
+   private void closeScreen() {
+      if (this.minecraft != null) {
+         this.minecraft.setScreen(this.parent);
+      }
+   }
 
-		int buttonY = this.height - 28;
-		this.addRenderableWidget(Button.builder(Component.translatable("gui.earth.teleport"), button -> {
-			sendTeleport();
-		}).bounds(this.width / 2 - 154, buttonY, 150, 20).build());
+   public void render( GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+      graphics.fill(0, 0, this.width, this.height, -1072689136);
+      graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 16777215);
+      super.render(graphics, mouseX, mouseY, delta);
+   }
 
-		this.addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> {
-			closeScreen();
-		}).bounds(this.width / 2 + 4, buttonY, 150, 20).build());
+   public void tick() {
+      super.tick();
+      if (this.searchWidget != null) {
+         this.searchWidget.tick();
+      }
+   }
 
-		this.addWidget(this.mapWidget);
-	}
+   public void onClose() {
+      this.closeScreen();
+   }
 
-	@Override
-	protected void setInitialFocus() {
-		if (this.searchWidget != null) {
-			this.setInitialFocus(this.searchWidget);
-		}
-	}
+   public void removed() {
+      if (this.mapWidget != null) {
+         this.mapWidget.close();
+      }
 
-	private void handleSearch(double latitude, double longitude) {
-		this.markerComponent.moveMarker(latitude, longitude);
-		this.mapWidget.getMap().focus(latitude, longitude, 12);
-	}
-
-	private void sendTeleport() {
-		if (this.markerComponent == null) {
-			return;
-		}
-		SlippyMapPoint marker = this.markerComponent.getMarker();
-		if (marker == null || this.minecraft == null) {
-			return;
-		}
-		if (!ClientPlayNetworking.canSend(GeoTpTeleportPayload.TYPE)) {
-			if (this.minecraft.player != null) {
-				this.minecraft.player.displayClientMessage(
-						Component.literal("Tellus: Server does not accept GeoTP requests."),
-						true
-				);
-			}
-			closeScreen();
-			return;
-		}
-		ClientPlayNetworking.send(new GeoTpTeleportPayload(marker.getLatitude(), marker.getLongitude()));
-		closeScreen();
-	}
-
-	private void closeScreen() {
-		if (this.minecraft != null) {
-			this.minecraft.setScreen(this.parent);
-		}
-	}
-
-	@Override
-	public void render(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, this.width, this.height, 0xC0101010);
-		graphics.drawCenteredString(this.font, this.title, this.width / 2, 4, 0xFFFFFF);
-		super.render(graphics, mouseX, mouseY, delta);
-	}
-
-	@Override
-	public void tick() {
-		super.tick();
-		if (this.searchWidget != null) {
-			this.searchWidget.tick();
-		}
-	}
-
-	@Override
-	public void onClose() {
-		closeScreen();
-	}
-
-	@Override
-	public void removed() {
-		if (this.mapWidget != null) {
-			this.mapWidget.close();
-		}
-		if (this.searchWidget != null) {
-			this.searchWidget.close();
-		}
-	}
+      if (this.searchWidget != null) {
+         this.searchWidget.close();
+      }
+   }
 }

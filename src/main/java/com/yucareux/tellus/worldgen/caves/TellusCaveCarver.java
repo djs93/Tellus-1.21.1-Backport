@@ -5,13 +5,13 @@ import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import net.minecraft.world.level.levelgen.carver.WorldCarver;
 
 public final class TellusCaveCarver {
-	private final ConfiguredWorldCarver<CaveCarverConfiguration> configured;
+   private final ConfiguredWorldCarver<CaveCarverConfiguration> configured;
 
-	public TellusCaveCarver(CaveCarverConfiguration configuration) {
-		this.configured = WorldCarver.CAVE.configured(configuration);
-	}
+   public TellusCaveCarver(CaveCarverConfiguration configuration) {
+      this.configured = WorldCarver.CAVE.configured(configuration);
+   }
 
-	ConfiguredWorldCarver<CaveCarverConfiguration> configured() {
-		return this.configured;
-	}
+   ConfiguredWorldCarver<CaveCarverConfiguration> configured() {
+      return this.configured;
+   }
 }

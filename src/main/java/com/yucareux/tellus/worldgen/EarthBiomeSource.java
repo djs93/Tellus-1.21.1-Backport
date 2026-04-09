@@ -4,6 +4,7 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.yucareux.tellus.world.data.biome.BiomeClassification;
 import com.yucareux.tellus.world.data.cover.TellusLandCoverSource;
+import com.yucareux.tellus.world.data.elevation.TellusElevationSource;
 import com.yucareux.tellus.world.data.koppen.TellusKoppenSource;
 import java.util.HashSet;
 import java.util.Objects;
@@ -13,312 +14,356 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.biome.Climate;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
+import net.minecraft.world.level.biome.Climate.Sampler;
 
 public final class EarthBiomeSource extends BiomeSource {
-	public static final MapCodec<EarthBiomeSource> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
-			RegistryOps.<Biome, EarthBiomeSource>retrieveGetter(Registries.BIOME),
-			EarthGeneratorSettings.CODEC.fieldOf("settings").forGetter(EarthBiomeSource::settings)
-	).apply(instance, EarthBiomeSource::new));
+   public static final MapCodec<EarthBiomeSource> CODEC = RecordCodecBuilder.mapCodec(
+      instance -> instance.group(
+            RegistryOps.retrieveGetter(Registries.BIOME), EarthGeneratorSettings.CODEC.fieldOf("settings").forGetter(EarthBiomeSource::settings)
+         )
+         .apply(instance, EarthBiomeSource::new)
+   );
+   private static final int ESA_SNOW_ICE = 70;
+   private static final int ESA_WATER = 80;
+   private static final int ESA_MANGROVES = 95;
+   private static final int ESA_NO_DATA = 0;
+   private static final int CAVE_MIN_DEPTH = 8;
+   private static final int LUSH_MIN_DEPTH = 12;
+   private static final int DRIPSTONE_MIN_DEPTH = 16;
+   private static final int DEEP_DARK_MIN_DEPTH = 24;
+   private static final int CAVE_BIOME_GRID = 48;
+   private static final int CAVE_BIOME_Y_GRID = 32;
+   private static final int DEEP_DARK_GRID = 96;
+   private static final int DEEP_DARK_Y_GRID = 48;
+   private static final int DEEP_DARK_Y_OFFSET = 32;
+   private static final double MAX_CAVE_BIOME_CHANCE = 0.55;
+   private static final TellusLandCoverSource LAND_COVER_SOURCE = TellusWorldgenSources.landCover();
+   private static final TellusKoppenSource KOPPEN_SOURCE = TellusWorldgenSources.koppen();
+   
+   private final HolderGetter<Biome> biomeLookup;
+   
+   private final EarthGeneratorSettings settings;
+   
+   private final Set<Holder<Biome>> possibleBiomes;
+   
+   private final Holder<Biome> plains;
+   
+   private final Holder<Biome> ocean;
+   
+   private final Holder<Biome> river;
+   
+   private final Holder<Biome> frozenPeaks;
+   
+   private final Holder<Biome> mangrove;
+   
+   private final Holder<Biome> lushCaves;
+   
+   private final Holder<Biome> dripstoneCaves;
+   
+   private final Holder<Biome> deepDark;
+   
+   private final WaterSurfaceResolver waterResolver;
+   private final boolean remaSnowEnabled;
+   private final double remaSnowBoundaryZ;
+   private final int deepDarkCeiling;
+   private volatile boolean fastSpawnMode = true;
 
-	private static final int ESA_SNOW_ICE = 70;
-	private static final int ESA_WATER = 80;
-	private static final int ESA_MANGROVES = 95;
-	private static final int ESA_NO_DATA = 0;
-	private static final int CAVE_MIN_DEPTH = 8;
-	private static final int LUSH_MIN_DEPTH = 12;
-	private static final int DRIPSTONE_MIN_DEPTH = 16;
-	private static final int DEEP_DARK_MIN_DEPTH = 24;
-	private static final int CAVE_BIOME_GRID = 48;
-	private static final int CAVE_BIOME_Y_GRID = 32;
-	private static final int DEEP_DARK_GRID = 96;
-	private static final int DEEP_DARK_Y_GRID = 48;
-	private static final int DEEP_DARK_Y_OFFSET = 32;
-	private static final double MAX_CAVE_BIOME_CHANCE = 0.55;
+   public EarthBiomeSource(HolderGetter<Biome> biomeLookup, EarthGeneratorSettings settings) {
+      this.biomeLookup = Objects.requireNonNull(biomeLookup, "biomeLookup");
+      this.settings = Objects.requireNonNull(settings, "settings");
+      this.deepDarkCeiling = settings.resolveSeaLevel() - DEEP_DARK_Y_OFFSET;
+      this.plains = this.biomeLookup.getOrThrow(Biomes.PLAINS);
+      this.ocean = this.resolveBiome(Biomes.OCEAN, this.plains);
+      this.river = this.resolveBiome(Biomes.RIVER, this.plains);
+      this.frozenPeaks = this.resolveBiome(Biomes.FROZEN_PEAKS, this.plains);
+      this.mangrove = this.resolveBiome(Biomes.MANGROVE_SWAMP, this.plains);
+      this.lushCaves = this.resolveOptionalBiome(Biomes.LUSH_CAVES);
+      this.dripstoneCaves = this.resolveOptionalBiome(Biomes.DRIPSTONE_CAVES);
+      this.deepDark = this.resolveOptionalBiome(Biomes.DEEP_DARK);
+      this.waterResolver = TellusWorldgenSources.waterResolver(this.settings);
+      this.remaSnowEnabled = TellusElevationSource.usesPolarDem(settings.demSelection()) && settings.worldScale() > 0.0;
+      this.remaSnowBoundaryZ = this.remaSnowEnabled ? TellusElevationSource.remaBoundaryBlockZ(settings.worldScale()) : Double.POSITIVE_INFINITY;
+      this.possibleBiomes = this.buildPossibleBiomes();
+   }
 
-	private static final TellusLandCoverSource LAND_COVER_SOURCE = TellusWorldgenSources.landCover();
-	private static final TellusKoppenSource KOPPEN_SOURCE = TellusWorldgenSources.koppen();
+   public EarthGeneratorSettings settings() {
+      return this.settings;
+   }
 
-	private final @NonNull HolderGetter<Biome> biomeLookup;
-	private final @NonNull EarthGeneratorSettings settings;
-	private final @NonNull Set<Holder<Biome>> possibleBiomes;
-	private final @NonNull Holder<Biome> plains;
-	private final @NonNull Holder<Biome> ocean;
-	private final @NonNull Holder<Biome> river;
-	private final @NonNull Holder<Biome> frozenPeaks;
-	private final @NonNull Holder<Biome> mangrove;
-	private final @Nullable Holder<Biome> lushCaves;
-	private final @Nullable Holder<Biome> dripstoneCaves;
-	private final @Nullable Holder<Biome> deepDark;
-	private final @NonNull WaterSurfaceResolver waterResolver;
-	private final int deepDarkCeiling;
-	private volatile boolean fastSpawnMode = true;
+   void setFastSpawnMode(boolean enabled) {
+      this.fastSpawnMode = enabled;
+   }
 
-	public EarthBiomeSource(HolderGetter<Biome> biomeLookup, EarthGeneratorSettings settings) {
-		this.biomeLookup = Objects.requireNonNull(biomeLookup, "biomeLookup");
-		this.settings = Objects.requireNonNull(settings, "settings");
-		this.deepDarkCeiling = settings.resolveSeaLevel() - DEEP_DARK_Y_OFFSET;
-		this.plains = this.biomeLookup.getOrThrow(Biomes.PLAINS);
-		this.ocean = resolveBiome(Biomes.OCEAN, this.plains);
-		this.river = resolveBiome(Biomes.RIVER, this.plains);
-		this.frozenPeaks = resolveBiome(Biomes.FROZEN_PEAKS, this.plains);
-		this.mangrove = resolveBiome(Biomes.MANGROVE_SWAMP, this.plains);
-		this.lushCaves = resolveOptionalBiome(Biomes.LUSH_CAVES);
-		this.dripstoneCaves = resolveOptionalBiome(Biomes.DRIPSTONE_CAVES);
-		this.deepDark = resolveOptionalBiome(Biomes.DEEP_DARK);
-		this.waterResolver = TellusWorldgenSources.waterResolver(this.settings);
-		this.possibleBiomes = buildPossibleBiomes();
-	}
+   
+   protected Stream<Holder<Biome>> collectPossibleBiomes() {
+      return Objects.requireNonNull(this.possibleBiomes.stream(), "possibleBiomes.stream()");
+   }
 
-	public EarthGeneratorSettings settings() {
-		return this.settings;
-	}
+   
+   protected MapCodec<? extends BiomeSource> codec() {
+      return Objects.requireNonNull(CODEC, "CODEC");
+   }
 
-	void setFastSpawnMode(boolean enabled) {
-		this.fastSpawnMode = enabled;
-	}
+   
+   public Holder<Biome> getNoiseBiome(int x, int y, int z,  Sampler sampler) {
+      int blockX = QuartPos.toBlock(x);
+      int blockY = QuartPos.toBlock(y);
+      int blockZ = QuartPos.toBlock(z);
+      return this.resolveBiomeAtBlock(blockX, blockY, blockZ);
+   }
 
-	@Override
-	protected @NonNull Stream<Holder<Biome>> collectPossibleBiomes() {
-		return Objects.requireNonNull(this.possibleBiomes.stream(), "possibleBiomes.stream()");
-	}
+   
+   public Holder<Biome> getBiomeAtBlock(int blockX, int blockZ) {
+      return this.resolveSurfaceBiomeAtBlock(blockX, blockZ);
+   }
 
-	@Override
-	protected @NonNull MapCodec<? extends BiomeSource> codec() {
-		return Objects.requireNonNull(CODEC, "CODEC");
-	}
+   public Holder<Biome> getBiomeAtBlock(
+      int blockX, int blockZ, int rawCoverClass, int visualCoverClass, WaterSurfaceResolver.WaterColumnData column
+   ) {
+      return this.getBiomeAtBlock(blockX, blockZ, rawCoverClass, visualCoverClass, column, null);
+   }
 
-	@Override
-	public @NonNull Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.@NonNull Sampler sampler) {
-		int blockX = QuartPos.toBlock(x);
-		int blockY = QuartPos.toBlock(y);
-		int blockZ = QuartPos.toBlock(z);
-		return resolveBiomeAtBlock(blockX, blockY, blockZ);
-	}
+   Holder<Biome> getBiomeAtBlock(
+      int blockX, int blockZ, int rawCoverClass, int visualCoverClass, WaterSurfaceResolver.WaterColumnData column, String koppenCode
+   ) {
+      return this.fastSpawnMode
+         ? this.resolveFastSpawnSurfaceBiome(blockX, blockZ)
+         : this.resolveSurfaceBiomeAtBlock(blockX, blockZ, rawCoverClass, visualCoverClass, column, koppenCode);
+   }
 
-	public @NonNull Holder<Biome> getBiomeAtBlock(int blockX, int blockZ) {
-		return resolveSurfaceBiomeAtBlock(blockX, blockZ);
-	}
+   
+   private Holder<Biome> resolveSurfaceBiomeAtBlock(int blockX, int blockZ) {
+      if (this.fastSpawnMode) {
+         return this.resolveFastSpawnSurfaceBiome(blockX, blockZ);
+      } else {
+         int rawCoverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
+         int visualCoverClass = this.sampleVisualCoverClass(blockX, blockZ, rawCoverClass);
+         return this.resolveSurfaceBiomeAtBlock(blockX, blockZ, rawCoverClass, visualCoverClass, null, null);
+      }
+   }
 
-	private @NonNull Holder<Biome> resolveSurfaceBiomeAtBlock(int blockX, int blockZ) {
-		if (this.fastSpawnMode) {
-			return resolveFastSpawnSurfaceBiome(blockX, blockZ);
-		}
-		int coverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
-		return resolveSurfaceBiomeAtBlock(blockX, blockZ, coverClass, null);
-	}
+   
+   private Holder<Biome> resolveBiomeAtBlock(int blockX, int blockY, int blockZ) {
+      if (this.fastSpawnMode) {
+         return this.resolveFastSpawnSurfaceBiome(blockX, blockZ);
+      } else {
+         int rawCoverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
+         int visualCoverClass = this.sampleVisualCoverClass(blockX, blockZ, rawCoverClass);
+         WaterSurfaceResolver.WaterColumnData column = this.settings.enableWater()
+            ? this.waterResolver.resolveFastColumnData(blockX, blockZ, rawCoverClass)
+            : this.waterResolver.resolveColumnData(blockX, blockZ, rawCoverClass);
+         Holder<Biome> surfaceBiome = this.resolveSurfaceBiomeAtBlock(blockX, blockZ, rawCoverClass, visualCoverClass, column, null);
+         if (!this.settings.caveGeneration()) {
+            return surfaceBiome;
+         } else {
+            int depth = column.terrainSurface() - blockY;
+            return depth < CAVE_MIN_DEPTH ? surfaceBiome : this.resolveCaveBiome(surfaceBiome, blockX, blockY, blockZ, depth);
+         }
+      }
+   }
 
-	private @NonNull Holder<Biome> resolveBiomeAtBlock(int blockX, int blockY, int blockZ) {
-		if (this.fastSpawnMode) {
-			return resolveFastSpawnSurfaceBiome(blockX, blockZ);
-		}
-		int coverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
-		WaterSurfaceResolver.WaterColumnData column =
-				this.waterResolver.resolveColumnData(blockX, blockZ, coverClass);
-		Holder<Biome> surfaceBiome = resolveSurfaceBiomeAtBlock(blockX, blockZ, coverClass, column);
-		if (!this.settings.caveGeneration()) {
-			return surfaceBiome;
-		}
-		int depth = column.terrainSurface() - blockY;
-		if (depth < CAVE_MIN_DEPTH) {
-			return surfaceBiome;
-		}
-		return resolveCaveBiome(surfaceBiome, blockX, blockY, blockZ, depth);
-	}
+   
+   private Holder<Biome> resolveFastSpawnSurfaceBiome(int blockX, int blockZ) {
+      int rawCoverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
+      int visualCoverClass = this.sampleVisualCoverClass(blockX, blockZ, rawCoverClass);
+      boolean remaSnowTerrain = this.isRemaSnowTerrain(blockZ);
+      if (rawCoverClass == ESA_MANGROVES) {
+         return this.mangrove;
+      } else if (this.settings.enableWater()) {
+         WaterSurfaceResolver.WaterInfo waterInfo = this.waterResolver.resolveFastWaterInfo(blockX, blockZ, rawCoverClass);
+         return waterInfo.isWater()
+            ? (waterInfo.isOcean() ? this.ocean : this.river)
+            : (remaSnowTerrain || visualCoverClass == ESA_SNOW_ICE ? this.frozenPeaks : this.plains);
+      } else if (rawCoverClass == ESA_WATER) {
+         return this.ocean;
+      } else {
+         return remaSnowTerrain || visualCoverClass == ESA_SNOW_ICE ? this.frozenPeaks : (rawCoverClass == ESA_NO_DATA ? this.ocean : this.plains);
+      }
+   }
 
-	private @NonNull Holder<Biome> resolveFastSpawnSurfaceBiome(int blockX, int blockZ) {
-		int coverClass = LAND_COVER_SOURCE.sampleCoverClass(blockX, blockZ, this.settings.worldScale());
-		if (coverClass == ESA_SNOW_ICE) {
-			return this.frozenPeaks;
-		}
-		if (coverClass == ESA_MANGROVES) {
-			return this.mangrove;
-		}
-		if (coverClass == ESA_WATER) {
-			return this.ocean;
-		}
-		if (coverClass == ESA_NO_DATA) {
-			return this.ocean;
-		}
-		return this.plains;
-	}
+   
+   private Holder<Biome> resolveSurfaceBiomeAtBlock(
+      int blockX, int blockZ, int rawCoverClass, int visualCoverClass,  WaterSurfaceResolver.WaterColumnData column, String precomputedKoppen
+   ) {
+      if (rawCoverClass == ESA_MANGROVES) {
+         return this.mangrove;
+      } else {
+         if (this.settings.enableWater()) {
+            WaterSurfaceResolver.WaterColumnData waterColumn = column != null
+               ? column
+               : this.waterResolver.resolveFastColumnData(blockX, blockZ, rawCoverClass);
+            if (waterColumn.hasWater()) {
+               return waterColumn.isOcean() ? this.ocean : this.river;
+            }
+         } else if (rawCoverClass == ESA_NO_DATA || rawCoverClass == ESA_WATER) {
+            WaterSurfaceResolver.WaterColumnData waterColumn = column != null ? column : this.waterResolver.resolveColumnData(blockX, blockZ, rawCoverClass);
+            if (waterColumn.hasWater()) {
+               if (waterColumn.isOcean()) {
+                  return this.ocean;
+               }
 
-	private @NonNull Holder<Biome> resolveSurfaceBiomeAtBlock(
-			int blockX,
-			int blockZ,
-			int coverClass,
-			WaterSurfaceResolver.@Nullable WaterColumnData column
-	) {
+               return this.river;
+            }
+         }
 
-		if (coverClass == ESA_SNOW_ICE) {
-			return this.frozenPeaks;
-		}
-		if (coverClass == ESA_MANGROVES) {
-			return this.mangrove;
-		}
-		if (coverClass == ESA_NO_DATA || coverClass == ESA_WATER) {
-			WaterSurfaceResolver.WaterColumnData waterColumn =
-					column != null ? column : this.waterResolver.resolveColumnData(blockX, blockZ, coverClass);
-			if (waterColumn.hasWater()) {
-				if (waterColumn.isOcean()) {
-					return this.ocean;
-				}
-				return this.river;
-			}
-		}
+         if (this.isRemaSnowTerrain(blockZ) || visualCoverClass == ESA_SNOW_ICE) {
+            return this.frozenPeaks;
+         }
 
-		String koppen = KOPPEN_SOURCE.sampleDitheredCode(blockX, blockZ, this.settings.worldScale());
-		if (koppen == null) {
-			koppen = KOPPEN_SOURCE.findNearestCode(blockX, blockZ, this.settings.worldScale());
-		}
+         String koppen = precomputedKoppen;
+         if (koppen == null) {
+            koppen = KOPPEN_SOURCE.sampleDitheredCode(blockX, blockZ, this.settings.worldScale());
+            if (koppen == null) {
+               koppen = KOPPEN_SOURCE.findNearestCode(blockX, blockZ, this.settings.worldScale());
+            }
+         }
 
-		ResourceKey<Biome> biomeKey = BiomeClassification.findBiomeKey(coverClass, koppen);
-		if (biomeKey == null) {
-			biomeKey = BiomeClassification.findFallbackKey(coverClass);
-		}
-		if (biomeKey == null) {
-			return this.plains;
-		}
-		return resolveBiome(biomeKey, this.plains);
-	}
+         ResourceKey<Biome> biomeKey = BiomeClassification.findBiomeKey(visualCoverClass, koppen);
+         if (biomeKey == null) {
+            biomeKey = BiomeClassification.findFallbackKey(visualCoverClass);
+         }
 
-	private @NonNull Set<Holder<Biome>> buildPossibleBiomes() {
-		Set<Holder<Biome>> holders = new HashSet<>();
-		for (ResourceKey<Biome> key : BiomeClassification.allBiomeKeys()) {
-			holders.add(resolveBiome(key, this.plains));
-		}
-		holders.add(this.plains);
-		holders.add(this.ocean);
-		holders.add(this.river);
-		holders.add(this.frozenPeaks);
-		holders.add(this.mangrove);
-		if (this.settings.caveGeneration()) {
-			addIfPresent(holders, this.lushCaves);
-			addIfPresent(holders, this.dripstoneCaves);
-			if (this.settings.deepDark()) {
-				addIfPresent(holders, this.deepDark);
-			}
-		}
-		return holders;
-	}
+         return biomeKey == null ? this.plains : this.resolveBiome(biomeKey, this.plains);
+      }
+   }
 
-	private @NonNull Holder<Biome> resolveCaveBiome(
-			@NonNull Holder<Biome> surfaceBiome,
-			int blockX,
-			int blockY,
-			int blockZ,
-			int depth
-	) {
-		double depthFactor = Mth.clamp((depth - CAVE_MIN_DEPTH) / 80.0, 0.0, 1.0);
-		double noise = sampleCaveNoise(blockX, blockY, blockZ, CAVE_BIOME_GRID, CAVE_BIOME_Y_GRID);
-		Holder<Biome> deepDarkBiome = this.deepDark;
-		Holder<Biome> lushCavesBiome = this.lushCaves;
-		Holder<Biome> dripstoneCavesBiome = this.dripstoneCaves;
+   private boolean isRemaSnowTerrain(int blockZ) {
+      return this.remaSnowEnabled && blockZ >= this.remaSnowBoundaryZ;
+   }
 
-		if (this.settings.deepDark()
-				&& deepDarkBiome != null
-				&& blockY <= this.deepDarkCeiling
-				&& depth >= DEEP_DARK_MIN_DEPTH) {
-			double deepNoise = sampleCaveNoise(blockX, blockY, blockZ, DEEP_DARK_GRID, DEEP_DARK_Y_GRID);
-			double deepChance = 0.28 + depthFactor * 0.22;
-			if (deepNoise < deepChance) {
-				return deepDarkBiome;
-			}
-		}
+   private int sampleVisualCoverClass(int blockX, int blockZ, int rawCoverClass) {
+      double worldScale = this.settings.worldScale();
+      return worldScale > 0.0 && worldScale < 10.0 ? LAND_COVER_SOURCE.sampleVisualCoverClass(blockX, blockZ, worldScale) : rawCoverClass;
+   }
 
-		double lushChance = (isLushSurface(surfaceBiome) ? 0.45 : 0.25) * (1.0 - depthFactor * 0.35);
-		double dripChance = (isDrySurface(surfaceBiome) ? 0.45 : 0.25) * (0.7 + depthFactor * 0.5);
+   
+   private Set<Holder<Biome>> buildPossibleBiomes() {
+      Set<Holder<Biome>> holders = new HashSet<>();
 
-		if (depth < LUSH_MIN_DEPTH) {
-			lushChance = 0.0;
-		}
-		if (depth < DRIPSTONE_MIN_DEPTH) {
-			dripChance = 0.0;
-		}
+      for (ResourceKey<Biome> key : BiomeClassification.allBiomeKeys()) {
+         holders.add(this.resolveBiome(key, this.plains));
+      }
 
-		double total = lushChance + dripChance;
-		if (total <= 0.0 || noise > MAX_CAVE_BIOME_CHANCE) {
-			return surfaceBiome;
-		}
+      holders.add(this.plains);
+      holders.add(this.ocean);
+      holders.add(this.river);
+      holders.add(this.frozenPeaks);
+      holders.add(this.mangrove);
+      if (this.settings.caveGeneration()) {
+         addIfPresent(holders, this.lushCaves);
+         addIfPresent(holders, this.dripstoneCaves);
+         if (this.settings.deepDark()) {
+            addIfPresent(holders, this.deepDark);
+         }
+      }
 
-		double pick = noise * total / MAX_CAVE_BIOME_CHANCE;
-		if (lushCavesBiome != null && pick < lushChance) {
-			return lushCavesBiome;
-		}
-		if (dripstoneCavesBiome != null && pick < lushChance + dripChance) {
-			return dripstoneCavesBiome;
-		}
-		return surfaceBiome;
-	}
+      return holders;
+   }
 
-	private static boolean isLushSurface(Holder<Biome> surfaceBiome) {
-		return surfaceBiome.is(Biomes.JUNGLE)
-				|| surfaceBiome.is(Biomes.SPARSE_JUNGLE)
-				|| surfaceBiome.is(Biomes.BAMBOO_JUNGLE)
-				|| surfaceBiome.is(Biomes.SWAMP)
-				|| surfaceBiome.is(Biomes.MANGROVE_SWAMP)
-				|| surfaceBiome.is(Biomes.DARK_FOREST)
-				|| surfaceBiome.is(Biomes.FOREST)
-				|| surfaceBiome.is(Biomes.BIRCH_FOREST)
-				|| surfaceBiome.is(Biomes.OLD_GROWTH_BIRCH_FOREST)
-				|| surfaceBiome.is(Biomes.OLD_GROWTH_PINE_TAIGA)
-				|| surfaceBiome.is(Biomes.OLD_GROWTH_SPRUCE_TAIGA)
-				|| surfaceBiome.is(Biomes.TAIGA);
-	}
+   
+   private Holder<Biome> resolveCaveBiome( Holder<Biome> surfaceBiome, int blockX, int blockY, int blockZ, int depth) {
+      double depthFactor = Mth.clamp((depth - CAVE_MIN_DEPTH) / 80.0, 0.0, 1.0);
+      double noise = sampleCaveNoise(blockX, blockY, blockZ, CAVE_BIOME_GRID, CAVE_BIOME_Y_GRID);
+      Holder<Biome> deepDarkBiome = this.deepDark;
+      Holder<Biome> lushCavesBiome = this.lushCaves;
+      Holder<Biome> dripstoneCavesBiome = this.dripstoneCaves;
+      if (this.settings.deepDark() && deepDarkBiome != null && blockY <= this.deepDarkCeiling && depth >= DEEP_DARK_MIN_DEPTH) {
+         double deepNoise = sampleCaveNoise(blockX, blockY, blockZ, DEEP_DARK_GRID, DEEP_DARK_Y_GRID);
+         double deepChance = 0.28 + depthFactor * 0.22;
+         if (deepNoise < deepChance) {
+            return deepDarkBiome;
+         }
+      }
 
-	private static boolean isDrySurface(Holder<Biome> surfaceBiome) {
-		return surfaceBiome.is(Biomes.DESERT)
-				|| surfaceBiome.is(Biomes.BADLANDS)
-				|| surfaceBiome.is(Biomes.WOODED_BADLANDS)
-				|| surfaceBiome.is(Biomes.ERODED_BADLANDS)
-				|| surfaceBiome.is(Biomes.SAVANNA)
-				|| surfaceBiome.is(Biomes.SAVANNA_PLATEAU)
-				|| surfaceBiome.is(Biomes.WINDSWEPT_SAVANNA);
-	}
+      double lushChance = (isLushSurface(surfaceBiome) ? 0.45 : 0.25) * (1.0 - depthFactor * 0.35);
+      double dripChance = (isDrySurface(surfaceBiome) ? 0.45 : 0.25) * (0.7 + depthFactor * 0.5);
+      if (depth < LUSH_MIN_DEPTH) {
+         lushChance = 0.0;
+      }
 
-	private static double sampleCaveNoise(int blockX, int blockY, int blockZ, int gridXZ, int gridY) {
-		int x = Math.floorDiv(blockX, gridXZ);
-		int y = Math.floorDiv(blockY, gridY);
-		int z = Math.floorDiv(blockZ, gridXZ);
-		long seed = (long) x * 341873128712L + (long) z * 132897987541L + (long) y * 42317861L;
-		return hashToUnit(seed);
-	}
+      if (depth < DRIPSTONE_MIN_DEPTH) {
+         dripChance = 0.0;
+      }
 
-	private static double hashToUnit(long seed) {
-		seed ^= (seed >>> 33);
-		seed *= 0xff51afd7ed558ccdL;
-		seed ^= (seed >>> 33);
-		seed *= 0xc4ceb9fe1a85ec53L;
-		seed ^= (seed >>> 33);
-		return (double) (seed >>> 11) * 0x1.0p-53;
-	}
+      double total = lushChance + dripChance;
+      if (!(total <= 0.0) && !(noise > MAX_CAVE_BIOME_CHANCE)) {
+         double pick = noise * total / MAX_CAVE_BIOME_CHANCE;
+         if (lushCavesBiome != null && pick < lushChance) {
+            return lushCavesBiome;
+         } else {
+            return dripstoneCavesBiome != null && pick < lushChance + dripChance ? dripstoneCavesBiome : surfaceBiome;
+         }
+      } else {
+         return surfaceBiome;
+      }
+   }
 
-	private static void addIfPresent(Set<Holder<Biome>> holders, @Nullable Holder<Biome> biome) {
-		if (biome != null) {
-			holders.add(biome);
-		}
-	}
+   private static boolean isLushSurface(Holder<Biome> surfaceBiome) {
+      return surfaceBiome.is(Biomes.JUNGLE)
+         || surfaceBiome.is(Biomes.SPARSE_JUNGLE)
+         || surfaceBiome.is(Biomes.BAMBOO_JUNGLE)
+         || surfaceBiome.is(Biomes.SWAMP)
+         || surfaceBiome.is(Biomes.MANGROVE_SWAMP)
+         || surfaceBiome.is(Biomes.DARK_FOREST)
+         || surfaceBiome.is(Biomes.FOREST)
+         || surfaceBiome.is(Biomes.BIRCH_FOREST)
+         || surfaceBiome.is(Biomes.OLD_GROWTH_BIRCH_FOREST)
+         || surfaceBiome.is(Biomes.OLD_GROWTH_PINE_TAIGA)
+         || surfaceBiome.is(Biomes.OLD_GROWTH_SPRUCE_TAIGA)
+         || surfaceBiome.is(Biomes.TAIGA);
+   }
 
-	private @NonNull Holder<Biome> resolveBiome(@Nullable ResourceKey<Biome> key, @NonNull Holder<Biome> fallback) {
-		if (key == null) {
-			return fallback;
-		}
-		Holder<Biome> resolved = this.biomeLookup.get(key).map(holder -> (Holder<Biome>) holder).orElse(fallback);
-		return Objects.requireNonNull(resolved, "resolvedBiome");
-	}
+   private static boolean isDrySurface(Holder<Biome> surfaceBiome) {
+      return surfaceBiome.is(Biomes.DESERT)
+         || surfaceBiome.is(Biomes.BADLANDS)
+         || surfaceBiome.is(Biomes.WOODED_BADLANDS)
+         || surfaceBiome.is(Biomes.ERODED_BADLANDS)
+         || surfaceBiome.is(Biomes.SAVANNA)
+         || surfaceBiome.is(Biomes.SAVANNA_PLATEAU)
+         || surfaceBiome.is(Biomes.WINDSWEPT_SAVANNA);
+   }
 
-	private @Nullable Holder<Biome> resolveOptionalBiome(@Nullable ResourceKey<Biome> key) {
-		if (key == null) {
-			return null;
-		}
-		return this.biomeLookup.get(key).map(holder -> (Holder<Biome>) holder).orElse(null);
-	}
+   private static double sampleCaveNoise(int blockX, int blockY, int blockZ, int gridXZ, int gridY) {
+      int x = Math.floorDiv(blockX, gridXZ);
+      int y = Math.floorDiv(blockY, gridY);
+      int z = Math.floorDiv(blockZ, gridXZ);
+      long seed = x * 341873128712L + z * 132897987541L + y * 42317861L;
+      return hashToUnit(seed);
+   }
+
+   private static double hashToUnit(long seed) {
+      seed ^= seed >>> 33;
+      seed *= -49064778989728563L;
+      seed ^= seed >>> 33;
+      seed *= -4265267296055464877L;
+      seed ^= seed >>> 33;
+      return (seed >>> 11) * 1.110223E-16F;
+   }
+
+   private static void addIfPresent(Set<Holder<Biome>> holders,  Holder<Biome> biome) {
+      if (biome != null) {
+         holders.add(biome);
+      }
+   }
+
+   
+   private Holder<Biome> resolveBiome( ResourceKey<Biome> key,  Holder<Biome> fallback) {
+      if (key == null) {
+         return fallback;
+      } else {
+         Holder<Biome> resolved = this.biomeLookup.get(key).map(holder -> (Holder<Biome>)holder).orElse(fallback);
+         return Objects.requireNonNull(resolved, "resolvedBiome");
+      }
+   }
+
+   
+   private Holder<Biome> resolveOptionalBiome( ResourceKey<Biome> key) {
+      return key == null ? null : this.biomeLookup.get(key).map(holder -> (Holder<Biome>)holder).orElse(null);
+   }
 }

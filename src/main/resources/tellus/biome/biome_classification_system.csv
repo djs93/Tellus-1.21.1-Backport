@@ -12,8 +12,8 @@ esa_code,esa_name,koppen_code,koppen_climate,biome_id
 10,Tree cover,Cwa,"Temperate, dry winter, hot summer",forest
 10,Tree cover,Cwb,"Temperate, dry winter, warm summer",birch_forest
 10,Tree cover,Cwc,"Temperate, dry winter, cold summer",taiga
-10,Tree cover,Cfa,"Temperate, no dry season, hot summer",forest
-10,Tree cover,Cfb,"Temperate, no dry season, warm summer",forest
+10,Tree cover,Cfa,"Temperate, no dry season, hot summer",dark_forest
+10,Tree cover,Cfb,"Temperate, no dry season, warm summer",dark_forest
 10,Tree cover,Cfc,"Temperate, no dry season, cold summer",taiga
 10,Tree cover,Dsa,"Cold, dry summer, hot summer",taiga
 10,Tree cover,Dsb,"Cold, dry summer, warm summer",taiga

@@ -22,520 +22,493 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import org.jspecify.annotations.Nullable;
 
 public final class TellusVoxyPregenManager {
-	private static final long TICK_NANOS = 50_000_000L;
-	private static final long SOFT_OVERLOAD_TICK_NANOS = 55_000_000L;
-	private static final long HARD_OVERLOAD_TICK_NANOS = 70_000_000L;
-	private static final int MAX_QUEUE_SIZE = 50_000;
-	private static final int IN_FLIGHT_MULTIPLIER = 4;
-	private static final int ABSOLUTE_MAX_IN_FLIGHT = 256;
-	private static final int COMPLETED_CACHE_MAX = 200_000;
-	private static final int TELEPORT_REPRIORITIZE_DISTANCE_CHUNKS = 64;
-	private static final int MOVEMENT_REPRIORITIZE_DISTANCE_CHUNKS = 16;
-	private static final int REPRIORITIZE_IN_FLIGHT_KEEP_RADIUS_CHUNKS = 16;
-	private static final int REPRIORITIZE_RADIUS_PADDING_CHUNKS = 8;
-	private static final int PRIORITY_RADIUS_CHUNKS = 2;
-	private static final int STALE_QUEUE_PRUNE_TRIGGER = 10_000;
+   private static final long TICK_NANOS = 50000000L;
+   private static final long SOFT_OVERLOAD_TICK_NANOS = 55000000L;
+   private static final long HARD_OVERLOAD_TICK_NANOS = 70000000L;
+   private static final int MAX_QUEUE_SIZE = 50000;
+   private static final int IN_FLIGHT_MULTIPLIER = 4;
+   private static final int ABSOLUTE_MAX_IN_FLIGHT = 256;
+   private static final int COMPLETED_CACHE_MAX = 200000;
+   private static final int TELEPORT_REPRIORITIZE_DISTANCE_CHUNKS = 64;
+   private static final int MOVEMENT_REPRIORITIZE_DISTANCE_CHUNKS = 16;
+   private static final int REPRIORITIZE_IN_FLIGHT_KEEP_RADIUS_CHUNKS = 16;
+   private static final int REPRIORITIZE_RADIUS_PADDING_CHUNKS = 8;
+   private static final int PRIORITY_RADIUS_CHUNKS = 2;
+   private static final int STALE_QUEUE_PRUNE_TRIGGER = 10000;
+   private final LongArrayFIFOQueue queue = new LongArrayFIFOQueue();
+   private final LongOpenHashSet queued = new LongOpenHashSet();
+   private final LongArrayFIFOQueue priorityQueue = new LongArrayFIFOQueue();
+   private final LongOpenHashSet priorityQueued = new LongOpenHashSet();
+   private final LongLinkedOpenHashSet completedChunks = new LongLinkedOpenHashSet();
+   private final Map<UUID, TellusVoxyPregenManager.PlayerPregenState> playerStates = new HashMap<>();
+   private final Set<Long> inFlight = ConcurrentHashMap.newKeySet();
+   
+   private volatile Boolean enabledOverride;
+   
+   private volatile Integer maxRadiusOverride;
+   
+   private volatile Integer chunksPerTickOverride;
+   private volatile int lastConfiguredVoxyRadiusChunks;
+   private volatile int lastEffectiveRadiusChunks;
 
-	private final LongArrayFIFOQueue queue = new LongArrayFIFOQueue();
-	private final LongOpenHashSet queued = new LongOpenHashSet();
-	private final LongArrayFIFOQueue priorityQueue = new LongArrayFIFOQueue();
-	private final LongOpenHashSet priorityQueued = new LongOpenHashSet();
-	private final LongLinkedOpenHashSet completedChunks = new LongLinkedOpenHashSet();
-	private final Map<UUID, PlayerPregenState> playerStates = new HashMap<>();
-	private final Set<Long> inFlight = ConcurrentHashMap.newKeySet();
+   public void onServerTick(MinecraftServer server) {
+      ServerLevel level = server.getLevel(Level.OVERWORLD);
+      if (level == null) {
+         this.clearQueueAndPlayerState();
+         this.lastConfiguredVoxyRadiusChunks = 0;
+         this.lastEffectiveRadiusChunks = 0;
+      } else if (level.getChunkSource().getGenerator() instanceof EarthChunkGenerator earthGenerator) {
+         EarthGeneratorSettings var11 = earthGenerator.settings();
+         if (!this.effectiveEnabled(var11)) {
+            this.clearQueueAndPlayerState();
+            this.lastConfiguredVoxyRadiusChunks = 0;
+            this.lastEffectiveRadiusChunks = 0;
+         } else if (!VoxyBridge.isVoxyLoaded()) {
+            this.clearQueueAndPlayerState();
+            this.lastConfiguredVoxyRadiusChunks = 0;
+            this.lastEffectiveRadiusChunks = 0;
+         } else {
+            int configuredVoxyRadius = Math.max(0, VoxyBridge.configuredChunkRadius());
+            this.lastConfiguredVoxyRadiusChunks = configuredVoxyRadius;
+            int targetRadius = Math.min(configuredVoxyRadius, this.effectiveMaxRadius(var11));
+            this.lastEffectiveRadiusChunks = targetRadius;
+            if (targetRadius <= 0) {
+               this.clearQueueAndPlayerState();
+            } else {
+               List<ServerPlayer> players = overworldPlayers(server, level);
+               if (players.isEmpty()) {
+                  this.clearQueueAndPlayerState();
+               } else {
+                  boolean movedPlayers = this.enqueueAroundPlayers(players, targetRadius);
+                  if (movedPlayers) {
+                     this.refreshPriorityQueue(players, targetRadius);
+                     if (this.queue.size() >= STALE_QUEUE_PRUNE_TRIGGER) {
+                        this.pruneNormalQueue(players, targetRadius + REPRIORITIZE_RADIUS_PADDING_CHUNKS);
+                     }
+                  }
 
-	private volatile @Nullable Boolean enabledOverride;
-	private volatile @Nullable Integer maxRadiusOverride;
-	private volatile @Nullable Integer chunksPerTickOverride;
+                  long averageTickNanos = server.getAverageTickTimeNanos();
+                  this.processQueue(server, level.getChunkSource(), this.effectiveChunksPerTick(var11), averageTickNanos);
+               }
+            }
+         }
+      } else {
+         this.clearQueueAndPlayerState();
+         this.lastConfiguredVoxyRadiusChunks = 0;
+         this.lastEffectiveRadiusChunks = 0;
+      }
+   }
 
-	private volatile int lastConfiguredVoxyRadiusChunks;
-	private volatile int lastEffectiveRadiusChunks;
+   public void shutdown() {
+      this.clearQueueAndPlayerState();
+      this.inFlight.clear();
+      this.clearOverrides();
+      this.lastConfiguredVoxyRadiusChunks = 0;
+      this.lastEffectiveRadiusChunks = 0;
+   }
 
-	public void onServerTick(MinecraftServer server) {
-		ServerLevel level = server.getLevel(Level.OVERWORLD);
-		if (level == null) {
-			clearQueueAndPlayerState();
-			lastConfiguredVoxyRadiusChunks = 0;
-			lastEffectiveRadiusChunks = 0;
-			return;
-		}
+   public void clearOverrides() {
+      this.enabledOverride = null;
+      this.maxRadiusOverride = null;
+      this.chunksPerTickOverride = null;
+   }
 
-		if (!(level.getChunkSource().getGenerator() instanceof EarthChunkGenerator earthGenerator)) {
-			clearQueueAndPlayerState();
-			lastConfiguredVoxyRadiusChunks = 0;
-			lastEffectiveRadiusChunks = 0;
-			return;
-		}
+   public void setEnabledOverride( Boolean enabled) {
+      this.enabledOverride = enabled;
+   }
 
-		EarthGeneratorSettings settings = earthGenerator.settings();
-		if (!effectiveEnabled(settings)) {
-			clearQueueAndPlayerState();
-			lastConfiguredVoxyRadiusChunks = 0;
-			lastEffectiveRadiusChunks = 0;
-			return;
-		}
+   public void setMaxRadiusOverride( Integer maxRadius) {
+      this.maxRadiusOverride = maxRadius;
+   }
 
-		if (!VoxyBridge.isVoxyLoaded()) {
-			clearQueueAndPlayerState();
-			lastConfiguredVoxyRadiusChunks = 0;
-			lastEffectiveRadiusChunks = 0;
-			return;
-		}
+   public void setChunksPerTickOverride( Integer chunksPerTick) {
+      this.chunksPerTickOverride = chunksPerTick;
+   }
 
-		int configuredVoxyRadius = Math.max(0, VoxyBridge.configuredChunkRadius());
-		lastConfiguredVoxyRadiusChunks = configuredVoxyRadius;
+   public boolean effectiveEnabled(EarthGeneratorSettings settings) {
+      Boolean override = this.enabledOverride;
+      return override != null ? override : settings.voxyChunkPregenEnabled();
+   }
 
-		int targetRadius = Math.min(configuredVoxyRadius, effectiveMaxRadius(settings));
-		lastEffectiveRadiusChunks = targetRadius;
-		if (targetRadius <= 0) {
-			clearQueueAndPlayerState();
-			return;
-		}
+   public int effectiveMaxRadius(EarthGeneratorSettings settings) {
+      Integer override = this.maxRadiusOverride;
+      return Math.max(0, override != null ? override : settings.voxyChunkPregenMaxRadius());
+   }
 
-		List<ServerPlayer> players = overworldPlayers(server, level);
-		if (players.isEmpty()) {
-			clearQueueAndPlayerState();
-			return;
-		}
+   public int effectiveChunksPerTick(EarthGeneratorSettings settings) {
+      Integer override = this.chunksPerTickOverride;
+      return Math.max(1, override != null ? override : settings.voxyChunkPregenChunksPerTick());
+   }
 
-		boolean movedPlayers = enqueueAroundPlayers(players, targetRadius);
-		if (movedPlayers) {
-			refreshPriorityQueue(players, targetRadius);
-			if (queue.size() >= STALE_QUEUE_PRUNE_TRIGGER) {
-				pruneNormalQueue(players, targetRadius + REPRIORITIZE_RADIUS_PADDING_CHUNKS);
-			}
-		}
-		long averageTickNanos = server.getAverageTickTimeNanos();
-		processQueue(server, level.getChunkSource(), effectiveChunksPerTick(settings), averageTickNanos);
-	}
+   
+   public Boolean enabledOverride() {
+      return this.enabledOverride;
+   }
 
-	public void shutdown() {
-		clearQueueAndPlayerState();
-		inFlight.clear();
-		lastConfiguredVoxyRadiusChunks = 0;
-		lastEffectiveRadiusChunks = 0;
-	}
+   
+   public Integer maxRadiusOverride() {
+      return this.maxRadiusOverride;
+   }
 
-	public void clearOverrides() {
-		enabledOverride = null;
-		maxRadiusOverride = null;
-		chunksPerTickOverride = null;
-	}
+   
+   public Integer chunksPerTickOverride() {
+      return this.chunksPerTickOverride;
+   }
 
-	public void setEnabledOverride(@Nullable Boolean enabled) {
-		enabledOverride = enabled;
-	}
+   public int queuedChunkCount() {
+      return this.queue.size() + this.priorityQueue.size();
+   }
 
-	public void setMaxRadiusOverride(@Nullable Integer maxRadius) {
-		maxRadiusOverride = maxRadius;
-	}
+   public int inFlightChunkCount() {
+      return this.inFlight.size();
+   }
 
-	public void setChunksPerTickOverride(@Nullable Integer chunksPerTick) {
-		chunksPerTickOverride = chunksPerTick;
-	}
+   public int lastConfiguredVoxyRadiusChunks() {
+      return this.lastConfiguredVoxyRadiusChunks;
+   }
 
-	public boolean effectiveEnabled(EarthGeneratorSettings settings) {
-		Boolean override = enabledOverride;
-		return override != null ? override.booleanValue() : settings.voxyChunkPregenEnabled();
-	}
+   public int lastEffectiveRadiusChunks() {
+      return this.lastEffectiveRadiusChunks;
+   }
 
-	public int effectiveMaxRadius(EarthGeneratorSettings settings) {
-		Integer override = maxRadiusOverride;
-		return Math.max(0, override != null ? override.intValue() : settings.voxyChunkPregenMaxRadius());
-	}
+   private static List<ServerPlayer> overworldPlayers(MinecraftServer server, ServerLevel level) {
+      List<ServerPlayer> players = new ArrayList<>();
 
-	public int effectiveChunksPerTick(EarthGeneratorSettings settings) {
-		Integer override = chunksPerTickOverride;
-		return Math.max(1, override != null ? override.intValue() : settings.voxyChunkPregenChunksPerTick());
-	}
+      for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+         if (player.level() == level) {
+            players.add(player);
+         }
+      }
 
-	public @Nullable Boolean enabledOverride() {
-		return enabledOverride;
-	}
+      return players;
+   }
 
-	public @Nullable Integer maxRadiusOverride() {
-		return maxRadiusOverride;
-	}
+   private boolean enqueueAroundPlayers(List<ServerPlayer> players, int radius) {
+      Set<UUID> active = new HashSet<>();
+      boolean reprioritize = false;
+      boolean movedPlayers = false;
 
-	public @Nullable Integer chunksPerTickOverride() {
-		return chunksPerTickOverride;
-	}
+      for (ServerPlayer player : players) {
+         active.add(player.getUUID());
+         TellusVoxyPregenManager.PlayerPregenState state = this.playerStates
+            .computeIfAbsent(player.getUUID(), ignored -> new TellusVoxyPregenManager.PlayerPregenState());
+         ChunkPos center = player.chunkPosition();
+         if (state.centerX != center.x || state.centerZ != center.z) {
+            movedPlayers = true;
+            if (state.centerX != Integer.MIN_VALUE && state.centerZ != Integer.MIN_VALUE) {
+               int jumpDistance = chebyshevChunkDistance(state.centerX, state.centerZ, center.x, center.z);
+               boolean requiresReprioritize = jumpDistance >= TELEPORT_REPRIORITIZE_DISTANCE_CHUNKS;
+               if (!requiresReprioritize) {
+                  if (state.anchorX == Integer.MIN_VALUE || state.anchorZ == Integer.MIN_VALUE) {
+                     state.anchorX = state.centerX;
+                     state.anchorZ = state.centerZ;
+                  }
 
-	public int queuedChunkCount() {
-		return queue.size() + priorityQueue.size();
-	}
+                  int driftFromAnchor = chebyshevChunkDistance(state.anchorX, state.anchorZ, center.x, center.z);
+                  requiresReprioritize = driftFromAnchor >= MOVEMENT_REPRIORITIZE_DISTANCE_CHUNKS;
+               }
 
-	public int inFlightChunkCount() {
-		return inFlight.size();
-	}
+               if (requiresReprioritize) {
+                  reprioritize = true;
+                  state.nextRing = 0;
+                  state.anchorX = center.x;
+                  state.anchorZ = center.z;
+               } else {
+                  state.nextRing = Math.max(0, state.nextRing - jumpDistance);
+               }
 
-	public int lastConfiguredVoxyRadiusChunks() {
-		return lastConfiguredVoxyRadiusChunks;
-	}
+               state.centerX = center.x;
+               state.centerZ = center.z;
+            } else {
+               state.centerX = center.x;
+               state.centerZ = center.z;
+               state.anchorX = center.x;
+               state.anchorZ = center.z;
+               state.nextRing = 0;
+            }
+         }
+      }
 
-	public int lastEffectiveRadiusChunks() {
-		return lastEffectiveRadiusChunks;
-	}
+      this.playerStates.entrySet().removeIf(entry -> !active.contains(entry.getKey()));
+      if (reprioritize) {
+         this.reprioritizeForCurrentPlayers(players, radius);
+      }
 
-	private static List<ServerPlayer> overworldPlayers(MinecraftServer server, ServerLevel level) {
-		List<ServerPlayer> players = new ArrayList<>();
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			if (player.level() == level) {
-				players.add(player);
-			}
-		}
-		return players;
-	}
+      for (ServerPlayer playerx : players) {
+         TellusVoxyPregenManager.PlayerPregenState state = this.playerStates.get(playerx.getUUID());
+         if (state != null && state.nextRing <= radius && this.queue.size() < MAX_QUEUE_SIZE) {
+            this.enqueueRing(state.centerX, state.centerZ, state.nextRing);
+            state.nextRing++;
+         }
+      }
 
-	private boolean enqueueAroundPlayers(List<ServerPlayer> players, int radius) {
-		Set<UUID> active = new HashSet<>();
-		boolean reprioritize = false;
-		boolean movedPlayers = false;
-		for (ServerPlayer player : players) {
-			active.add(player.getUUID());
-			PlayerPregenState state = playerStates.computeIfAbsent(player.getUUID(), ignored -> new PlayerPregenState());
-			ChunkPos center = player.chunkPosition();
-			if (state.centerX != center.x || state.centerZ != center.z) {
-				movedPlayers = true;
-				if (state.centerX == Integer.MIN_VALUE || state.centerZ == Integer.MIN_VALUE) {
-					state.centerX = center.x;
-					state.centerZ = center.z;
-					state.anchorX = center.x;
-					state.anchorZ = center.z;
-					state.nextRing = 0;
-					continue;
-				}
-				int jumpDistance = chebyshevChunkDistance(state.centerX, state.centerZ, center.x, center.z);
-				boolean requiresReprioritize = jumpDistance >= TELEPORT_REPRIORITIZE_DISTANCE_CHUNKS;
-				if (!requiresReprioritize) {
-					if (state.anchorX == Integer.MIN_VALUE || state.anchorZ == Integer.MIN_VALUE) {
-						state.anchorX = state.centerX;
-						state.anchorZ = state.centerZ;
-					}
-					int driftFromAnchor = chebyshevChunkDistance(state.anchorX, state.anchorZ, center.x, center.z);
-					requiresReprioritize = driftFromAnchor >= MOVEMENT_REPRIORITIZE_DISTANCE_CHUNKS;
-				}
-				if (requiresReprioritize) {
-					reprioritize = true;
-					state.nextRing = 0;
-					state.anchorX = center.x;
-					state.anchorZ = center.z;
-				} else {
-					// Preserve outward progress when moving slowly across chunks.
-					state.nextRing = Math.max(0, state.nextRing - jumpDistance);
-				}
-				state.centerX = center.x;
-				state.centerZ = center.z;
-			}
-		}
+      return movedPlayers;
+   }
 
-		playerStates.entrySet().removeIf(entry -> !active.contains(entry.getKey()));
+   private void reprioritizeForCurrentPlayers(List<ServerPlayer> players, int radius) {
+      this.queue.clear();
+      this.queued.clear();
+      int keepRadius = Math.min(radius + REPRIORITIZE_RADIUS_PADDING_CHUNKS, REPRIORITIZE_IN_FLIGHT_KEEP_RADIUS_CHUNKS);
+      this.releaseFarInFlight(players, keepRadius);
+      this.priorityQueue.clear();
+      this.priorityQueued.clear();
 
-		if (reprioritize) {
-			reprioritizeForCurrentPlayers(players, radius);
-		}
+      for (ServerPlayer player : players) {
+         ChunkPos pos = player.chunkPosition();
+         this.enqueueChunk(pos.x, pos.z);
+         this.enqueuePriorityChunk(pos.x, pos.z);
+      }
+   }
 
-		for (ServerPlayer player : players) {
-			PlayerPregenState state = playerStates.get(player.getUUID());
-			if (state == null) {
-				continue;
-			}
-			if (state.nextRing > radius || queue.size() >= MAX_QUEUE_SIZE) {
-				continue;
-			}
-			enqueueRing(state.centerX, state.centerZ, state.nextRing);
-			state.nextRing++;
-		}
-		return movedPlayers;
-	}
+   private void refreshPriorityQueue(List<ServerPlayer> players, int radius) {
+      int localRadius = Math.min(PRIORITY_RADIUS_CHUNKS, radius);
+      this.prunePriorityQueue(players, localRadius + PRIORITY_RADIUS_CHUNKS);
 
-	private void reprioritizeForCurrentPlayers(List<ServerPlayer> players, int radius) {
-		// Movement-based recentering should behave like a soft reset around the current location.
-		queue.clear();
-		queued.clear();
-		int keepRadius = Math.min(
-				radius + REPRIORITIZE_RADIUS_PADDING_CHUNKS,
-				REPRIORITIZE_IN_FLIGHT_KEEP_RADIUS_CHUNKS
-		);
-		releaseFarInFlight(players, keepRadius);
-		priorityQueue.clear();
-		priorityQueued.clear();
+      for (ServerPlayer player : players) {
+         ChunkPos center = player.chunkPosition();
 
-		for (ServerPlayer player : players) {
-			ChunkPos pos = player.chunkPosition();
-			enqueueChunk(pos.x, pos.z);
-			enqueuePriorityChunk(pos.x, pos.z);
-		}
-	}
+         for (int ring = 0; ring <= localRadius; ring++) {
+            this.enqueuePriorityRing(center.x, center.z, ring);
+         }
+      }
+   }
 
-	private void refreshPriorityQueue(List<ServerPlayer> players, int radius) {
-		int localRadius = Math.min(PRIORITY_RADIUS_CHUNKS, radius);
-		prunePriorityQueue(players, localRadius + 2);
-		for (ServerPlayer player : players) {
-			ChunkPos center = player.chunkPosition();
-			for (int ring = 0; ring <= localRadius; ring++) {
-				enqueuePriorityRing(center.x, center.z, ring);
-			}
-		}
-	}
+   private void prunePriorityQueue(List<ServerPlayer> players, int keepRadius) {
+      if (!this.priorityQueue.isEmpty()) {
+         int size = this.priorityQueue.size();
+         LongArrayFIFOQueue retained = new LongArrayFIFOQueue(size);
+         this.priorityQueued.clear();
 
-	private void prunePriorityQueue(List<ServerPlayer> players, int keepRadius) {
-		if (priorityQueue.isEmpty()) {
-			return;
-		}
-		int size = priorityQueue.size();
-		LongArrayFIFOQueue retained = new LongArrayFIFOQueue(size);
-		priorityQueued.clear();
-		for (int i = 0; i < size; i++) {
-			long key = priorityQueue.dequeueLong();
-			if (!isNearAnyPlayer(players, key, keepRadius)) {
-				continue;
-			}
-			if (priorityQueued.add(key)) {
-				retained.enqueue(key);
-			}
-		}
-		priorityQueue.clear();
-		while (!retained.isEmpty()) {
-			priorityQueue.enqueue(retained.dequeueLong());
-		}
-	}
+         for (int i = 0; i < size; i++) {
+            long key = this.priorityQueue.dequeueLong();
+            if (isNearAnyPlayer(players, key, keepRadius) && this.priorityQueued.add(key)) {
+               retained.enqueue(key);
+            }
+         }
 
-	private void pruneNormalQueue(List<ServerPlayer> players, int keepRadius) {
-		if (queue.isEmpty()) {
-			return;
-		}
-		int size = queue.size();
-		LongArrayFIFOQueue retained = new LongArrayFIFOQueue(size);
-		for (int i = 0; i < size; i++) {
-			long key = queue.dequeueLong();
-			if (!queued.contains(key)) {
-				continue;
-			}
-			if (!isNearAnyPlayer(players, key, keepRadius)) {
-				queued.remove(key);
-				continue;
-			}
-			retained.enqueue(key);
-		}
-		queue.clear();
-		while (!retained.isEmpty()) {
-			long key = retained.dequeueLong();
-			if (queued.contains(key)) {
-				queue.enqueue(key);
-			}
-		}
-	}
+         this.priorityQueue.clear();
 
-	private void releaseFarInFlight(List<ServerPlayer> players, int keepRadius) {
-		// Requests already launched for far-away chunks should not block new local launches.
-		for (long key : inFlight) {
-			if (!isNearAnyPlayer(players, key, keepRadius)) {
-				inFlight.remove(key);
-			}
-		}
-	}
+         while (!retained.isEmpty()) {
+            this.priorityQueue.enqueue(retained.dequeueLong());
+         }
+      }
+   }
 
-	private static boolean isNearAnyPlayer(List<ServerPlayer> players, long chunkKey, int radius) {
-		int chunkX = ChunkPos.getX(chunkKey);
-		int chunkZ = ChunkPos.getZ(chunkKey);
-		for (ServerPlayer player : players) {
-			ChunkPos center = player.chunkPosition();
-			if (chebyshevChunkDistance(center.x, center.z, chunkX, chunkZ) <= radius) {
-				return true;
-			}
-		}
-		return false;
-	}
+   private void pruneNormalQueue(List<ServerPlayer> players, int keepRadius) {
+      if (!this.queue.isEmpty()) {
+         int size = this.queue.size();
+         LongArrayFIFOQueue retained = new LongArrayFIFOQueue(size);
 
-	private static int chebyshevChunkDistance(int xA, int zA, int xB, int zB) {
-		long dx = Math.abs((long) xA - xB);
-		long dz = Math.abs((long) zA - zB);
-		return (int) Math.min(Integer.MAX_VALUE, Math.max(dx, dz));
-	}
+         for (int i = 0; i < size; i++) {
+            long key = this.queue.dequeueLong();
+            if (this.queued.contains(key)) {
+               if (!isNearAnyPlayer(players, key, keepRadius)) {
+                  this.queued.remove(key);
+               } else {
+                  retained.enqueue(key);
+               }
+            }
+         }
 
-	private void enqueueRing(int centerX, int centerZ, int ring) {
-		if (ring <= 0) {
-			enqueueChunk(centerX, centerZ);
-			return;
-		}
-		int minX = centerX - ring;
-		int maxX = centerX + ring;
-		int minZ = centerZ - ring;
-		int maxZ = centerZ + ring;
+         this.queue.clear();
 
-		for (int x = minX; x <= maxX; x++) {
-			enqueueChunk(x, minZ);
-			if (maxZ != minZ) {
-				enqueueChunk(x, maxZ);
-			}
-		}
-		for (int z = minZ + 1; z < maxZ; z++) {
-			enqueueChunk(minX, z);
-			if (maxX != minX) {
-				enqueueChunk(maxX, z);
-			}
-		}
-	}
+         while (!retained.isEmpty()) {
+            long key = retained.dequeueLong();
+            if (this.queued.contains(key)) {
+               this.queue.enqueue(key);
+            }
+         }
+      }
+   }
 
-	private void enqueueChunk(int chunkX, int chunkZ) {
-		long key = ChunkPos.asLong(chunkX, chunkZ);
-		if (completedChunks.contains(key)) {
-			return;
-		}
-		if (queued.add(key)) {
-			queue.enqueue(key);
-		}
-	}
+   private void releaseFarInFlight(List<ServerPlayer> players, int keepRadius) {
+      for (long key : this.inFlight) {
+         if (!isNearAnyPlayer(players, key, keepRadius)) {
+            this.inFlight.remove(key);
+         }
+      }
+   }
 
-	private void enqueuePriorityRing(int centerX, int centerZ, int ring) {
-		if (ring <= 0) {
-			enqueuePriorityChunk(centerX, centerZ);
-			return;
-		}
-		int minX = centerX - ring;
-		int maxX = centerX + ring;
-		int minZ = centerZ - ring;
-		int maxZ = centerZ + ring;
+   private static boolean isNearAnyPlayer(List<ServerPlayer> players, long chunkKey, int radius) {
+      int chunkX = ChunkPos.getX(chunkKey);
+      int chunkZ = ChunkPos.getZ(chunkKey);
 
-		for (int x = minX; x <= maxX; x++) {
-			enqueuePriorityChunk(x, minZ);
-			if (maxZ != minZ) {
-				enqueuePriorityChunk(x, maxZ);
-			}
-		}
-		for (int z = minZ + 1; z < maxZ; z++) {
-			enqueuePriorityChunk(minX, z);
-			if (maxX != minX) {
-				enqueuePriorityChunk(maxX, z);
-			}
-		}
-	}
+      for (ServerPlayer player : players) {
+         ChunkPos center = player.chunkPosition();
+         if (chebyshevChunkDistance(center.x, center.z, chunkX, chunkZ) <= radius) {
+            return true;
+         }
+      }
 
-	private void enqueuePriorityChunk(int chunkX, int chunkZ) {
-		long key = ChunkPos.asLong(chunkX, chunkZ);
-		if (completedChunks.contains(key)) {
-			return;
-		}
-		if (priorityQueued.add(key)) {
-			priorityQueue.enqueue(key);
-		}
-	}
+      return false;
+   }
 
-	private void processQueue(
-			MinecraftServer server,
-			ServerChunkCache source,
-			int chunksPerTick,
-			long averageTickNanos
-	) {
-		int launchBudget = effectiveLaunchBudget(chunksPerTick, averageTickNanos);
-		if (launchBudget <= 0) {
-			return;
-		}
-		int maxInFlight = Math.min(
-				ABSOLUTE_MAX_IN_FLIGHT,
-				Math.max(launchBudget + 1, launchBudget * IN_FLIGHT_MULTIPLIER)
-		);
+   private static int chebyshevChunkDistance(int xA, int zA, int xB, int zB) {
+      long dx = Math.abs((long)xA - xB);
+      long dz = Math.abs((long)zA - zB);
+      return (int)Math.min(2147483647L, Math.max(dx, dz));
+   }
 
-		int launched = 0;
-		while (launched < launchBudget) {
-			if (inFlight.size() >= maxInFlight) {
-				return;
-			}
-			Long polled = pollNextChunk();
-			if (polled == null) {
-				return;
-			}
-			long key = polled.longValue();
-			if (inFlight.contains(key)) {
-				continue;
-			}
-			if (!inFlight.add(key)) {
-				continue;
-			}
+   private void enqueueRing(int centerX, int centerZ, int ring) {
+      if (ring <= 0) {
+         this.enqueueChunk(centerX, centerZ);
+      } else {
+         int minX = centerX - ring;
+         int maxX = centerX + ring;
+         int minZ = centerZ - ring;
+         int maxZ = centerZ + ring;
 
-			final long chunkKey = key;
-			int chunkX = ChunkPos.getX(chunkKey);
-			int chunkZ = ChunkPos.getZ(chunkKey);
+         for (int x = minX; x <= maxX; x++) {
+            this.enqueueChunk(x, minZ);
+            if (maxZ != minZ) {
+               this.enqueueChunk(x, maxZ);
+            }
+         }
 
-			source.getChunkFuture(chunkX, chunkZ, ChunkStatus.FULL, true)
-					.whenComplete((result, error) -> {
-						inFlight.remove(chunkKey);
-						if (error != null || result == null || !result.isSuccess()) {
-							return;
-						}
-						result.ifSuccess(chunk -> ingestIfLevelChunk(server, chunk, chunkKey));
-					});
-			launched++;
-		}
-	}
+         for (int z = minZ + 1; z < maxZ; z++) {
+            this.enqueueChunk(minX, z);
+            if (maxX != minX) {
+               this.enqueueChunk(maxX, z);
+            }
+         }
+      }
+   }
 
-	private int effectiveLaunchBudget(int chunksPerTick, long averageTickNanos) {
-		int base = Math.max(1, chunksPerTick);
-		if (averageTickNanos >= HARD_OVERLOAD_TICK_NANOS) {
-			// Let the server recover when it is heavily behind.
-			return 0;
-		}
-		if (averageTickNanos >= SOFT_OVERLOAD_TICK_NANOS) {
-			return 1;
-		}
-		if (averageTickNanos >= TICK_NANOS) {
-			return Math.max(1, base / 2);
-		}
-		// If the server is healthy, opportunistically use a bit more throughput.
-		if (averageTickNanos < TICK_NANOS - 10_000_000L) {
-			return Math.min(base + Math.max(1, base / 2), 256);
-		}
-		return base;
-	}
+   private void enqueueChunk(int chunkX, int chunkZ) {
+      long key = ChunkPos.asLong(chunkX, chunkZ);
+      if (!this.completedChunks.contains(key)) {
+         if (this.queued.add(key)) {
+            this.queue.enqueue(key);
+         }
+      }
+   }
 
-	private @Nullable Long pollNextChunk() {
-		while (!priorityQueue.isEmpty()) {
-			long key = priorityQueue.dequeueLong();
-			priorityQueued.remove(key);
-			// If the key is also in the normal queue, drop that later duplicate.
-			queued.remove(key);
-			return Long.valueOf(key);
-		}
-		while (!queue.isEmpty()) {
-			long key = queue.dequeueLong();
-			if (!queued.remove(key)) {
-				continue;
-			}
-			return Long.valueOf(key);
-		}
-		return null;
-	}
+   private void enqueuePriorityRing(int centerX, int centerZ, int ring) {
+      if (ring <= 0) {
+         this.enqueuePriorityChunk(centerX, centerZ);
+      } else {
+         int minX = centerX - ring;
+         int maxX = centerX + ring;
+         int minZ = centerZ - ring;
+         int maxZ = centerZ + ring;
 
-	private void ingestIfLevelChunk(MinecraftServer server, ChunkAccess chunk, long chunkKey) {
-		if (chunk instanceof LevelChunk levelChunk) {
-			recordCompletedChunk(chunkKey);
-			VoxyBridge.tryIngestChunkAsync(server, levelChunk);
-		}
-	}
+         for (int x = minX; x <= maxX; x++) {
+            this.enqueuePriorityChunk(x, minZ);
+            if (maxZ != minZ) {
+               this.enqueuePriorityChunk(x, maxZ);
+            }
+         }
 
-	private void recordCompletedChunk(long chunkKey) {
-		if (completedChunks.addAndMoveToLast(chunkKey) && completedChunks.size() > COMPLETED_CACHE_MAX) {
-			completedChunks.removeFirstLong();
-		}
-	}
+         for (int z = minZ + 1; z < maxZ; z++) {
+            this.enqueuePriorityChunk(minX, z);
+            if (maxX != minX) {
+               this.enqueuePriorityChunk(maxX, z);
+            }
+         }
+      }
+   }
 
-	private void clearQueueAndPlayerState() {
-		queue.clear();
-		queued.clear();
-		priorityQueue.clear();
-		priorityQueued.clear();
-		playerStates.clear();
-	}
+   private void enqueuePriorityChunk(int chunkX, int chunkZ) {
+      long key = ChunkPos.asLong(chunkX, chunkZ);
+      if (!this.completedChunks.contains(key)) {
+         if (this.priorityQueued.add(key)) {
+            this.priorityQueue.enqueue(key);
+         }
+      }
+   }
 
-	private static final class PlayerPregenState {
-		private int centerX = Integer.MIN_VALUE;
-		private int centerZ = Integer.MIN_VALUE;
-		private int anchorX = Integer.MIN_VALUE;
-		private int anchorZ = Integer.MIN_VALUE;
-		private int nextRing;
-	}
+   private void processQueue(MinecraftServer server, ServerChunkCache source, int chunksPerTick, long averageTickNanos) {
+      int launchBudget = this.effectiveLaunchBudget(chunksPerTick, averageTickNanos);
+      if (launchBudget > 0) {
+         int maxInFlight = Math.min(ABSOLUTE_MAX_IN_FLIGHT, Math.max(launchBudget + 1, launchBudget * IN_FLIGHT_MULTIPLIER));
+         int launched = 0;
+
+         while (launched < launchBudget) {
+            if (this.inFlight.size() >= maxInFlight) {
+               return;
+            }
+
+            Long polled = this.pollNextChunk();
+            if (polled == null) {
+               return;
+            }
+
+            long key = polled;
+            if (!this.inFlight.contains(key) && this.inFlight.add(key)) {
+               int chunkX = ChunkPos.getX(key);
+               int chunkZ = ChunkPos.getZ(key);
+               source.getChunkFuture(chunkX, chunkZ, ChunkStatus.FULL, true).whenComplete((result, error) -> {
+                  this.inFlight.remove(key);
+                  if (error == null && result != null && result.isSuccess()) {
+                     result.ifSuccess(chunk -> this.ingestIfLevelChunk(server, chunk, key));
+                  }
+               });
+               launched++;
+            }
+         }
+      }
+   }
+
+   private int effectiveLaunchBudget(int chunksPerTick, long averageTickNanos) {
+      int base = Math.max(1, chunksPerTick);
+      if (averageTickNanos >= HARD_OVERLOAD_TICK_NANOS) {
+         return 0;
+      } else if (averageTickNanos >= SOFT_OVERLOAD_TICK_NANOS) {
+         return 1;
+      } else if (averageTickNanos >= TICK_NANOS) {
+         return Math.max(1, base / 2);
+      } else {
+         return averageTickNanos < TICK_NANOS - 10000000L ? Math.min(base + Math.max(1, base / 2), ABSOLUTE_MAX_IN_FLIGHT) : base;
+      }
+   }
+
+   
+   private Long pollNextChunk() {
+      if (!this.priorityQueue.isEmpty()) {
+         long key = this.priorityQueue.dequeueLong();
+         this.priorityQueued.remove(key);
+         this.queued.remove(key);
+         return key;
+      } else {
+         while (!this.queue.isEmpty()) {
+            long key = this.queue.dequeueLong();
+            if (this.queued.remove(key)) {
+               return key;
+            }
+         }
+
+         return null;
+      }
+   }
+
+   private void ingestIfLevelChunk(MinecraftServer server, ChunkAccess chunk, long chunkKey) {
+      if (chunk instanceof LevelChunk levelChunk) {
+         this.recordCompletedChunk(chunkKey);
+         VoxyBridge.tryIngestChunkAsync(server, levelChunk);
+      }
+   }
+
+   private void recordCompletedChunk(long chunkKey) {
+      if (this.completedChunks.addAndMoveToLast(chunkKey) && this.completedChunks.size() > COMPLETED_CACHE_MAX) {
+         this.completedChunks.removeFirstLong();
+      }
+   }
+
+   private void clearQueueAndPlayerState() {
+      this.queue.clear();
+      this.queued.clear();
+      this.priorityQueue.clear();
+      this.priorityQueued.clear();
+      this.playerStates.clear();
+   }
+
+   private static final class PlayerPregenState {
+      private int centerX = Integer.MIN_VALUE;
+      private int centerZ = Integer.MIN_VALUE;
+      private int anchorX = Integer.MIN_VALUE;
+      private int anchorZ = Integer.MIN_VALUE;
+      private int nextRing;
+   }
 }

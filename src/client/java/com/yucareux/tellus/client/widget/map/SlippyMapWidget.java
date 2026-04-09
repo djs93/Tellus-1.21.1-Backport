@@ -5,195 +5,175 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.network.chat.Component;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import org.jspecify.annotations.NonNull;
 
+@Environment(EnvType.CLIENT)
 public class SlippyMapWidget extends AbstractWidget {
-	private static final String ATTRIBUTION = "(c) OpenStreetMap Contributors";
+   private static final String ATTRIBUTION = "(c) OpenStreetMap Contributors";
+   private final SlippyMap map;
+   private final List<MapComponent> components = new ArrayList<>();
+   private boolean mouseDown;
+   private boolean mouseDragged;
+   private int attributionBottomPadding;
 
-	private final SlippyMap map;
-	private final List<MapComponent> components = new ArrayList<>();
+   public SlippyMapWidget(int x, int y, int width, int height) {
+      super(x, y, width, height, Component.empty());
+      this.map = new SlippyMap(width, height);
+   }
 
-	private boolean mouseDown;
-	private boolean mouseDragged;
-	private int attributionBottomPadding;
+   public SlippyMap getMap() {
+      return this.map;
+   }
 
-	public SlippyMapWidget(int x, int y, int width, int height) {
-		super(x, y, width, height, Component.empty());
-		this.map = new SlippyMap(width, height);
-	}
+   public <T extends MapComponent> T addComponent(T component) {
+      this.components.add(component);
+      return component;
+   }
 
-	public SlippyMap getMap() {
-		return this.map;
-	}
+   public void setAttributionBottomPadding(int padding) {
+      this.attributionBottomPadding = Math.max(0, padding);
+   }
 
-	public <T extends MapComponent> T addComponent(T component) {
-		this.components.add(component);
-		return component;
-	}
+   protected void renderWidget( GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+      this.drawBackground(graphics);
+      graphics.enableScissor(this.getX() + 4, this.getY() + 4, this.getX() + this.width - 4, this.getY() + this.height - 4);
+      int cameraX = this.map.getCameraX();
+      int cameraY = this.map.getCameraY();
+      int cameraZoom = this.map.getCameraZoom();
+      List<SlippyMapTilePos> tiles = this.map.getVisibleTiles();
+      List<SlippyMapTilePos> cascadedTiles = this.map.cascadeTiles(tiles);
+      cascadedTiles.sort(Comparator.comparingInt(SlippyMapTilePos::getZoom));
 
-	public void setAttributionBottomPadding(int padding) {
-		this.attributionBottomPadding = Math.max(0, padding);
-	}
+      for (SlippyMapTilePos pos : cascadedTiles) {
+         SlippyMapTile tile = this.map.getTile(pos);
+         this.renderTile(graphics, cameraX, cameraY, cameraZoom, pos, tile, delta);
+      }
 
-	@Override
-	protected void renderWidget(@NonNull GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-		this.drawBackground(graphics);
+      SlippyMapPoint mouse = this.getPointUnderMouse(mouseX, mouseY);
+      graphics.pose().pushMatrix();
+      graphics.pose().translate(this.getX(), this.getY());
 
-		graphics.enableScissor(this.getX() + 4, this.getY() + 4, this.getX() + this.width - 4,
-				this.getY() + this.height - 4);
+      for (MapComponent component : this.components) {
+         component.onDrawMap(this.map, graphics, mouseX, mouseY, mouse);
+      }
 
-		int cameraX = this.map.getCameraX();
-		int cameraY = this.map.getCameraY();
-		int cameraZoom = this.map.getCameraZoom();
+      graphics.pose().popMatrix();
+      graphics.disableScissor();
+      int maxX = this.getX() + this.width - 4;
+      int maxY = this.getY() + this.height - 4 - this.attributionBottomPadding;
+      int attributionWidth = Minecraft.getInstance().font.width(ATTRIBUTION) + 20;
+      int attributionOriginX = maxX - attributionWidth;
+      int attributionOriginY = maxY - 9 - 4;
+      graphics.fill(attributionOriginX, attributionOriginY, maxX, maxY, -1072689136);
+      graphics.drawString(Minecraft.getInstance().font, ATTRIBUTION, attributionOriginX + 10, attributionOriginY + 2, -1);
+   }
 
-		List<SlippyMapTilePos> tiles = this.map.getVisibleTiles();
-		List<SlippyMapTilePos> cascadedTiles = this.map.cascadeTiles(tiles);
-		cascadedTiles.sort(Comparator.comparingInt(SlippyMapTilePos::getZoom));
+   private void renderTile(GuiGraphics graphics, int cameraX, int cameraY, int cameraZoom, SlippyMapTilePos pos, SlippyMapTile image, float delta) {
+      image.update(delta);
+      Identifier location = image.getLocation();
+      if (location != null) {
+         int deltaZoom = cameraZoom - pos.getZoom();
+         double zoomScale = Math.pow(2.0, deltaZoom);
+         int size = Mth.floor(256.0 * zoomScale);
+         int renderX = (pos.getX() << deltaZoom) * 256 - cameraX;
+         int renderY = (pos.getY() << deltaZoom) * 256 - cameraY;
+         int textureSize = Math.max(256, size);
+         graphics.pose().pushMatrix();
+         graphics.pose().translate(this.getX(), this.getY());
+         int scaleFactor = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+         float scale = 1.0F / scaleFactor;
+         graphics.pose().scale(scale, scale);
+         graphics.blit(
+            RenderPipelines.GUI_TEXTURED, Objects.requireNonNull(location, "tileLocation"), renderX, renderY, 0.0F, 0.0F, size, size, textureSize, textureSize
+         );
+         graphics.pose().popMatrix();
+      }
+   }
 
-		for (SlippyMapTilePos pos : cascadedTiles) {
-			SlippyMapTile tile = this.map.getTile(pos);
-			this.renderTile(graphics, cameraX, cameraY, cameraZoom, pos, tile, delta);
-		}
+   private void drawBackground(GuiGraphics graphics) {
+      graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, -14671840);
+      graphics.renderOutline(this.getX(), this.getY(), this.width, this.height, -16777216);
+   }
 
-		SlippyMapPoint mouse = this.getPointUnderMouse(mouseX, mouseY);
-		graphics.pose().pushMatrix();
-		graphics.pose().translate((float) this.getX(), (float) this.getY());
-		for (MapComponent component : this.components) {
-			component.onDrawMap(this.map, graphics, mouseX, mouseY, mouse);
-		}
-		graphics.pose().popMatrix();
+   public boolean mouseClicked( MouseButtonEvent event, boolean isPrimary) {
+      if (!this.isMouseOver(event.x(), event.y())) {
+         return false;
+      } else {
+         this.mouseDown = true;
+         if (event.button() == 0) {
+            SlippyMapPoint mouse = this.getPointUnderMouse(event.x(), event.y());
 
-		graphics.disableScissor();
+            for (MapComponent component : this.components) {
+               if (component.onMouseClicked(this.map, mouse, event.button())) {
+                  return true;
+               }
+            }
+         }
 
-		int maxX = this.getX() + this.width - 4;
-		int maxY = this.getY() + this.height - 4 - this.attributionBottomPadding;
-		int attributionWidth = Minecraft.getInstance().font.width(ATTRIBUTION) + 20;
-		int attributionOriginX = maxX - attributionWidth;
-		int attributionOriginY = maxY - Minecraft.getInstance().font.lineHeight - 4;
-		graphics.fill(attributionOriginX, attributionOriginY, maxX, maxY, 0xC0101010);
-		graphics.drawString(Minecraft.getInstance().font, ATTRIBUTION, attributionOriginX + 10, attributionOriginY + 2,
-				0xFFFFFFFF);
+         return true;
+      }
+   }
 
-	}
+   public boolean mouseDragged( MouseButtonEvent event, double dragX, double dragY) {
+      if (this.mouseDown) {
+         this.map.drag((int)(-dragX), (int)(-dragY));
+         this.mouseDragged = true;
+         return true;
+      } else {
+         return false;
+      }
+   }
 
-	private void renderTile(
-			GuiGraphics graphics,
-			int cameraX,
-			int cameraY,
-			int cameraZoom,
-			SlippyMapTilePos pos,
-			SlippyMapTile image,
-			float delta
-	) {
-		image.update(delta);
+   public boolean mouseReleased( MouseButtonEvent event) {
+      if (event.button() == 0 && this.mouseDown && !this.mouseDragged && this.isMouseOver(event.x(), event.y())) {
+         SlippyMapPoint mouse = this.getPointUnderMouse(event.x(), event.y());
 
-		Identifier location = image.getLocation();
-		if (location != null) {
-			int deltaZoom = cameraZoom - pos.getZoom();
-			double zoomScale = Math.pow(2.0, deltaZoom);
-			int size = Mth.floor(SlippyMap.TILE_SIZE * zoomScale);
-			int renderX = (pos.getX() << deltaZoom) * SlippyMap.TILE_SIZE - cameraX;
-			int renderY = (pos.getY() << deltaZoom) * SlippyMap.TILE_SIZE - cameraY;
-			int textureSize = Math.max(SlippyMap.TILE_SIZE, size);
+         for (MapComponent component : this.components) {
+            if (component.onMouseReleased(this.map, mouse, event.button())) {
+               return true;
+            }
+         }
+      }
 
-			graphics.pose().pushMatrix();
-			graphics.pose().translate((float) this.getX(), (float) this.getY());
-			int scaleFactor = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
-			float scale = 1.0F / scaleFactor;
-			graphics.pose().scale(scale, scale);
+      this.mouseDown = false;
+      this.mouseDragged = false;
+      return false;
+   }
 
-			graphics.blit(RenderPipelines.GUI_TEXTURED, Objects.requireNonNull(location, "tileLocation"), renderX,
-					renderY, 0.0F, 0.0F, size, size,
-					textureSize, textureSize);
+   public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+      if (this.isMouseOver(mouseX, mouseY)) {
+         int zoom = (int)Math.signum(scrollY);
+         if (zoom != 0) {
+            this.map.zoom(zoom, (int)(mouseX - this.getX()), (int)(mouseY - this.getY()));
+         }
 
-			graphics.pose().popMatrix();
-		}
-	}
+         return true;
+      } else {
+         return false;
+      }
+   }
 
-	private void drawBackground(GuiGraphics graphics) {
-		graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF202020);
-		graphics.renderOutline(this.getX(), this.getY(), this.width, this.height, 0xFF000000);
-	}
+   public void close() {
+      this.map.shutdown();
+   }
 
-	@Override
-	public boolean mouseClicked(@NonNull MouseButtonEvent event, boolean isPrimary) {
-		if (this.isMouseOver(event.x(), event.y())) {
-			this.mouseDown = true;
+   private SlippyMapPoint getPointUnderMouse(double mouseX, double mouseY) {
+      int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+      int mapX = (int)((mouseX - this.getX()) * scale) + this.map.getCameraX();
+      int mapY = (int)((mouseY - this.getY()) * scale) + this.map.getCameraY();
+      return new SlippyMapPoint(mapX, mapY, this.map.getCameraZoom());
+   }
 
-			if (event.button() == 0) {
-				SlippyMapPoint mouse = this.getPointUnderMouse(event.x(), event.y());
-				for (MapComponent component : this.components) {
-					if (component.onMouseClicked(this.map, mouse, event.button())) {
-						return true;
-					}
-				}
-			}
-			return true;
-		}
-		return false;
-	}
-
-	@Override
-	public boolean mouseDragged(@NonNull MouseButtonEvent event, double dragX, double dragY) {
-		if (this.mouseDown) {
-			this.map.drag((int) -dragX, (int) -dragY);
-			this.mouseDragged = true;
-			return true;
-		}
-		return false;
-	}
-
-	@Override
-	public boolean mouseReleased(@NonNull MouseButtonEvent event) {
-		if (event.button() == 0) {
-			if (this.mouseDown && !this.mouseDragged && this.isMouseOver(event.x(), event.y())) {
-				SlippyMapPoint mouse = this.getPointUnderMouse(event.x(), event.y());
-				for (MapComponent component : this.components) {
-					if (component.onMouseReleased(this.map, mouse, event.button())) {
-						return true;
-					}
-				}
-			}
-		}
-
-		this.mouseDown = false;
-		this.mouseDragged = false;
-		return false;
-	}
-
-	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-		if (this.isMouseOver(mouseX, mouseY)) {
-			int zoom = (int) Math.signum(scrollY);
-			if (zoom != 0) {
-				this.map.zoom(zoom, (int) (mouseX - this.getX()), (int) (mouseY - this.getY()));
-			}
-			return true;
-		}
-		return false;
-	}
-
-	public void close() {
-		this.map.shutdown();
-	}
-
-	private SlippyMapPoint getPointUnderMouse(double mouseX, double mouseY) {
-		int scale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
-		int mapX = (int) ((mouseX - this.getX()) * scale) + this.map.getCameraX();
-		int mapY = (int) ((mouseY - this.getY()) * scale) + this.map.getCameraY();
-		return new SlippyMapPoint(mapX, mapY, this.map.getCameraZoom());
-	}
-
-	@Override
-	protected void updateWidgetNarration(@NonNull NarrationElementOutput narration) {
-	}
+   protected void updateWidgetNarration( NarrationElementOutput narration) {
+   }
 }

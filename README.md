@@ -89,9 +89,11 @@ This section lets you toggle vanilla structures and world features on or off, su
 - **Coming Soon**: Additional compatibility options are work in progress and currently unavailable.
 
 ### Cache
-- **OSM map**: Cached map tiles used by the teleport map UI. Deleting will force re-downloads as you browse.
+- **OSM data**: Cached map, road, and water tiles used by Tellus map and OSM features. Deleting will force re-downloads as needed.
 - **ESA WorldCover**: Cached land cover tiles used for biome and vegetation lookups.
+- **Koppen climate**: Cached climate raster used for biome climate classification.
 - **Terrain tiles**: Cached elevation tiles used for terrain height sampling.
+- **ArcticDEM**: Cached ArcticDEM index files used when the ArcticDEM DEM provider is selected.
 - **Total**: Combined size of all Tellus caches (read-only).
 - **Delete cache / Delete all cache**: Removes cached data to free disk space; data will be re-downloaded or rebuilt as needed.
 </details>
@@ -127,7 +129,6 @@ This section lets you toggle vanilla structures and world features on or off, su
 - Canada terrain data contains information licensed under the Open Government Licence - Canada.
 - Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers.
 - Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration.
-- Mexico terrain data source: INEGI, Continental relief, 2016.
 - New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand and the New Zealand Government (All rights reserved).
 - Norway terrain data (c) Kartverket.
 - United Kingdom terrain data (c) Environment Agency copyright and/or database right 2015. All rights reserved.
